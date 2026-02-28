@@ -1,0 +1,30 @@
+# AI Finance Project To-Do List
+
+## 1. Foundation & Setup
+- [x] Set up Python virtual environment and install dependencies.
+- [x] Configure backend framework (FastAPI) and frontend (Streamlit).
+- [x] Establish project folder structure (`backend/`, `ui/`, `config/`, `utils/`, `data/`).
+
+## 2. Core Backend Functionality
+- [x] Implement local Small Language Model (SLM) integration ([LLMEngine](file:///c:/Users/LENOVO/Desktop/ai_finance/backend/services/llm_service.py#9-109) with `TinyLlama-1.1B`).
+- [x] Create `/chat` endpoint for persona-based conversation generation.
+- [x] Create `/files` endpoint for multi-format text extraction (PDF, DOCX, TXT, CSV, PPTX).
+- [x] Create `/analysis` endpoint for automated scoring based on text content.
+
+## 3. UI & Frontend Interaction
+- [x] Implement chat interface with existing chat history view.
+- [x] Add dynamic file uploader widget with format validation.
+- [x] Implement side-bar functionality for persona selection.
+- [x] Add chat history saving, listing, and loading to switch contexts.
+
+## 4. Bug Fixes & Refactoring
+- [x] Fix Streamlit state management (`StreamlitAPIException`) for multi-selectbox UI.
+- [x] Diagnose backend startup connection issues (`WinError 10061`).
+- [x] Update model loading scripts to ensure backend stays active.
+
+## 5. Pending & Up-Next Features
+- [ ] **Dynamic Model Loading & Unloading:** Update the backend architecture to freely switch between loaded HuggingFace models (e.g., from `TinyLLaMA` to `Phi-3 Mini`) via [slm_config.py](file:///c:/Users/LENOVO/Desktop/ai_finance/config/slm_config.py) without leaking memory.
+- [ ] **Authentication System:** Implement proper credentials and user login sessions so distinct users have isolated chat histories.
+- [ ] **Advanced RAG Integration:** Set up Vector Embeddings (e.g., ChromaDB) for uploaded documents, enabling contextual chats specifically grounded in custom files rather than just scoring them.
+- [ ] **Data Visualization:** Expand the "Analysis" tab in Streamlit to generate visual elements like charts/graphs from the scored CSV output.
+- [ ] **Performance Optimization:** Implement model device quantization or caching mechanisms to speed up subsequent queries.
