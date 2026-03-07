@@ -16,6 +16,7 @@ if PROJECT_ROOT not in sys.path:
 from ui.sidebar import render_sidebar
 from ui.chat import render_chat
 from ui.analysis_view import render_analysis_view
+from ui.architecture import render_architecture_view
 
 # -------------------------------------------------
 # Page configuration
@@ -53,10 +54,13 @@ render_sidebar()
 # -------------------------------------------------
 # Main Page Tabs
 # -------------------------------------------------
-tab_chat, tab_analysis = st.tabs(["💬 Chat", "📈 Analysis"])
+tab_chat, tab_analysis, tab_arch = st.tabs(["💬 Chat", "📈 Analysis", "🏗️ Architecture"])
 
 with tab_chat:
     render_chat()
 
 with tab_analysis:
     render_analysis_view()
+
+with tab_arch:
+    render_architecture_view()
