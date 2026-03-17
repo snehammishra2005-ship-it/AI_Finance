@@ -77,17 +77,19 @@ class LLMEngine:
         if self._pipe is None:
             self.load_model()
 
+        from utils.persona_manager import get_persona_prompt
+        persona_instructions = get_persona_prompt(persona)
+
         # Simple prompt engineering for TinyLlama Chat
         # <|system|>
-        # You are {persona}.</s>
+        # You are a helpful AI assistant. {persona_instructions}</s>
         # <|user|>
         # {message}</s>
         # <|assistant|>
         
         prompt = (
             f"<|system|>\n"
-            f"You are a helpful AI assistant acting as {persona}. "
-            f"Provide concise and accurate financial insights.\n"
+            f"You are a helpful AI assistant. {persona_instructions}\n"
             f"</s>\n"
             f"<|user|>\n"
             f"{message}\n"

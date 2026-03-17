@@ -37,22 +37,20 @@ def render_sidebar():
     # -----------------------------
     # Persona Selection
     # -----------------------------
-    personas = [
-        "Student", "Teacher", "Engineering Student",
-        "MBA Student", "Clerk", "Homemaker",
-        "Retiree", "Senior Citizen"
-    ]
+    from utils.persona_manager import get_persona_names
+    personas = get_persona_names()
 
-    current_persona = st.session_state.get("persona", personas[0])
+    current_persona = st.session_state.get("persona", personas[0] if personas else "General User")
     try:
         persona_index = personas.index(current_persona) if current_persona in personas else 0
     except ValueError:
         persona_index = 0
 
     selected_persona = st.sidebar.selectbox(
-        "👤 Persona",
+        "👤 Your Identity",
         personas,
-        index=persona_index
+        index=persona_index,
+        help="The AI will tailor its financial advice based on your background."
     )
     st.session_state.persona = selected_persona
 
