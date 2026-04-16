@@ -23,6 +23,7 @@ data/analysis_outputs/
 *.csv
 *.pdf
 *.txt
+!requirements.txt
 *.docx
 *.pptx
 
