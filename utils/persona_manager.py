@@ -18,8 +18,8 @@ def load_personas(file_path=None):
     with open(file_path, "r", encoding="utf-8") as f:
         content = f.read()
 
-    # Split by headers
-    sections = re.split(r'^#\s+', content, flags=re.MULTILINE)
+    # Split by level 2 headers (e.g. ## Persona Name)
+    sections = re.split(r'^##\s+', content, flags=re.MULTILINE)
     
     personas = {}
     for section in sections:
@@ -28,6 +28,11 @@ def load_personas(file_path=None):
         
         lines = section.strip().split('\n')
         name = lines[0].strip()
+        
+        # Skip the main header or any malformed sections starting with '#'
+        if name.startswith('#'):
+            continue
+            
         prompt = '\n'.join(lines[1:]).strip()
         
         if name:
