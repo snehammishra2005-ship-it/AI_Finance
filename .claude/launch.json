@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "streamlit-ui",
+      "runtimeExecutable": "venv/Scripts/streamlit.exe",
+      "runtimeArgs": ["run", "ui/app.py"],
+      "port": 8501
+    },
+    {
+      "name": "fastapi-backend",
+      "runtimeExecutable": "venv/Scripts/uvicorn.exe",
+      "runtimeArgs": ["backend.main:app", "--host", "127.0.0.1", "--port", "8000"],
+      "port": 8000
+    }
+  ]
+}

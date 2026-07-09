@@ -20,12 +20,18 @@ htmlcov/
 data/uploads/
 data/history/
 data/analysis_outputs/
+data/runtime/
+data/test_reports/
+rag_storage/
 *.csv
 *.pdf
 *.txt
 !requirements.txt
 *.docx
 *.pptx
+
+# Claude Code local settings
+.claude/settings.local.json
 
 # OS generated files
 .DS_Store

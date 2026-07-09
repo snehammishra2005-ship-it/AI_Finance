@@ -2,19 +2,35 @@
 
 SLM_LIST = [
     {
-        "name": "Phi-3 Mini",
-        "description": "High explainability, good for beginners"
+        
+    "name": "GPT-5.5 (OpenRouter)",
+    "model_id": "openai/gpt-5.5",
+    "provider": "openrouter",
+    "description": "GPT-5.5 via OpenRouter"
+
     },
     {
-        "name": "TinyLLaMA",
-        "description": "Fast and lightweight"
+        "name": "Gemini 1.5 Flash (Google)",
+        "provider": "google",
+        "model_id": "gemini-1.5-flash",
+        "description": "Fast multimodal model from Google"
     },
     {
-        "name": "Gemma-2B",
-        "description": "Efficient small language model"
+    "name": "Llama 3.1 8B Instant (Groq)",
+    "model_id": "llama-3.1-8b-instant",
+    "provider": "groq",
+    "description": "Ultra-fast Groq-hosted Llama model."
+},
+    {
+        "name": "Claude 3 Haiku (Anthropic)",
+        "provider": "anthropic",
+        "model_id": "claude-3-haiku-20240307",
+        "description": "Fast and responsive model from Anthropic"
     },
     {
-        "name": "Mistral-7B-Q",
-        "description": "Balanced performance (quantized)"
+        "name": "TinyLlama (Local Fallback)",
+        "provider": "local",
+        "model_id": "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+        "description": "Local CPU fallback model"
     }
 ]

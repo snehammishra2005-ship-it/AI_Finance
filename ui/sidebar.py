@@ -1,5 +1,5 @@
 import streamlit as st
-from config.slm_config import SLM_LIST
+
 from utils.history_manager import (
     save_chat_history,
     load_all_histories,
@@ -7,81 +7,103 @@ from utils.history_manager import (
 )
 
 
+# -------------------------------------------------
+# Load Previous Chat Callback
+# -------------------------------------------------
 def load_chat_callback(file_path):
     data = load_chat_history(file_path)
-    st.session_state.messages = data["messages"]
-    st.session_state.persona = data["persona"]
-    st.session_state.slm = data["slm"]
 
+    st.session_state.messages = data.get("messages", [])
+    st.session_state.persona = data.get("persona", "General User")
+    st.session_state.slm = data.get("slm", None)
+    st.session_state.page = "chat"
+
+
+# -------------------------------------------------
+# New Chat Callback
+# -------------------------------------------------
+def new_chat_callback():
+    if st.session_state.get("messages"):
+        save_chat_history(
+            messages=st.session_state.messages,
+            persona=st.session_state.get("persona"),
+            slm=st.session_state.get("slm")
+        )
+
+    st.session_state.messages = []
+    st.session_state.page = "chat"
+
+
+# -------------------------------------------------
+# Sidebar Renderer
+# -------------------------------------------------
 def render_sidebar():
-    st.sidebar.title("📊 AI in Finance")
 
-    # -----------------------------
-    # Model Selection
-    # -----------------------------
-    model_names = [m["name"] for m in SLM_LIST]
-    
-    current_slm = st.session_state.get("slm", model_names[0] if model_names else None)
-    try:
-        slm_index = model_names.index(current_slm) if current_slm in model_names else 0
-    except ValueError:
-        slm_index = 0
+    with st.sidebar:
 
-    selected_slm = st.sidebar.selectbox(
-        "🤖 Small Language Model",
-        model_names,
-        index=slm_index
-    )
-    st.session_state.slm = selected_slm
+        st.markdown(
+            "<div class='sidebar-brand'>📊 AI in Finance</div>",
+            unsafe_allow_html=True
+        )
 
-    # -----------------------------
-    # Persona Selection
-    # -----------------------------
-    from utils.persona_manager import get_persona_names
-    personas = get_persona_names()
+        st.button(
+            "➕  New chat",
+            use_container_width=True,
+            type="primary",
+            on_click=new_chat_callback
+        )
 
-    current_persona = st.session_state.get("persona", personas[0] if personas else "General User")
-    try:
-        persona_index = personas.index(current_persona) if current_persona in personas else 0
-    except ValueError:
-        persona_index = 0
+        st.divider()
 
-    selected_persona = st.sidebar.selectbox(
-        "👤 Your Identity",
-        personas,
-        index=persona_index,
-        help="The AI will tailor its financial advice based on your background."
-    )
-    st.session_state.persona = selected_persona
+        # =================================================
+        # PAGE NAVIGATION
+        # =================================================
+        nav_labels = ["💬 Chat", "📈 Analysis", "🏗️ Architecture"]
+        nav_map = {
+            "💬 Chat": "chat",
+            "📈 Analysis": "analysis",
+            "🏗️ Architecture": "architecture",
+        }
+        reverse_nav_map = {v: k for k, v in nav_map.items()}
 
-    # -----------------------------
-    # Chat History
-    # -----------------------------
-    st.sidebar.divider()
-    st.sidebar.subheader("🕘 Chat History")
+        current_page = st.session_state.get("page", "chat")
+        current_label = reverse_nav_map.get(current_page, nav_labels[0])
 
-    histories = load_all_histories()
+        selected_label = st.radio(
+            "Navigate",
+            nav_labels,
+            index=nav_labels.index(current_label),
+            label_visibility="collapsed"
+        )
 
-    if not histories:
-        st.sidebar.caption("No saved chats yet.")
-    else:
-        for h in histories:
-            st.sidebar.button(
-                f"{h['timestamp']} | {h['persona']}",
-                key=h["file"],
-                on_click=load_chat_callback,
-                args=(h["path"],)
-            )
+        st.session_state.page = nav_map[selected_label]
 
-    # -----------------------------
-    # New Chat (Save + Reset)
-    # -----------------------------
-    st.sidebar.divider()
-    if st.sidebar.button("➕ New Chat"):
-        if st.session_state.get("messages"):
-            save_chat_history(
-                messages=st.session_state.messages,
-                persona=st.session_state.get("persona"),
-                slm=st.session_state.get("slm")
-            )
-        st.session_state.messages = []
+        st.divider()
+
+        # =================================================
+        # CHAT HISTORY
+        # =================================================
+        st.markdown(
+            "<div class='sidebar-section-label'>Chats</div>",
+            unsafe_allow_html=True
+        )
+
+        histories = load_all_histories()
+
+        if not histories:
+            st.caption("No saved chats yet.")
+
+        else:
+            for history in histories:
+
+                history_label = (
+                    f"{history['timestamp']} · {history['persona']}"
+                )
+
+                st.button(
+                    label=history_label,
+                    key=history["file"],
+                    use_container_width=True,
+                    on_click=load_chat_callback,
+                    args=(history["path"],)
+                )

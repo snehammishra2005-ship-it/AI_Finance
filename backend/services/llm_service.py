@@ -1,25 +1,24 @@
-
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 import logging
-import os
+from config.slm_config import SLM_LIST
+from backend.services.api_providers import (
+    OpenRouterProvider,
+    GeminiProvider,
+    GroqProvider,
+    AnthropicProvider,
+    LocalProvider
+)
 
 logger = logging.getLogger(__name__)
 
 class LLMEngine:
     """
-    Handles loading and inference of Small Language Models (SLMs).
-    Optimized for CPU usage if CUDA is unavailable.
+    Acts as a router to dispatch generation requests to the correct API provider
+    or local model based on the selected configuration.
     """
     
     _instance = None
-    _model = None
-    _tokenizer = None
-    _pipe = None
+    _providers = {}
     
-    # Default model: TinyLlama (1.1B params) - Good balance for local CPU
-    DEFAULT_MODEL = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
-
     @classmethod
     def get_instance(cls):
         if cls._instance is None:
@@ -27,87 +26,83 @@ class LLMEngine:
         return cls._instance
 
     def __init__(self):
-        self.model_name = self.DEFAULT_MODEL
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        logger.info(f"Initialized LLMEngine on device: {self.device}")
+        # Default model logic
+        if SLM_LIST:
+            self.default_model_config = SLM_LIST[0]
+            self.current_model_name = self.default_model_config["name"]
+        else:
+            self.default_model_config = None
+            self.current_model_name = None
+        logger.info("Initialized LLMEngine routing system.")
+
+    def _get_provider_instance(self, config: dict):
+        if not config:
+            return None
+            
+        provider_type = config.get("provider")
+        model_id = config.get("model_id")
+        
+        # Cache providers so we don't re-initialize heavy clients or local models
+        cache_key = f"{provider_type}_{model_id}"
+        
+        if cache_key in self._providers:
+            return self._providers[cache_key]
+            
+        logger.info(f"Initializing new provider: {provider_type} with model {model_id}")
+        
+        try:
+            if provider_type == "openrouter":
+                provider = OpenRouterProvider(model_id)
+            elif provider_type == "google":
+                provider = GeminiProvider(model_id)
+            elif provider_type == "groq":
+                provider = GroqProvider(model_id)
+            elif provider_type == "anthropic":
+                provider = AnthropicProvider(model_id)
+            elif provider_type == "local":
+                provider = LocalProvider(model_id)
+            else:
+                logger.error(f"Unknown provider type: {provider_type}")
+                return None
+                
+            self._providers[cache_key] = provider
+            return provider
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize provider {provider_type}: {e}")
+            return None
 
     def load_model(self, model_name: str = None):
         """
-        Loads the model into memory. This is heavy and should be done once.
+        In the API context, this mostly just sets the active configuration
+        and verifies the provider can be initialized.
         """
         if model_name:
-            self.model_name = model_name
-
-        if self._pipe is not None:
-             # Check if we need to reload (e.g. different model)
-             # For now, simplistic check
-             return
+            self.current_model_name = model_name
             
-        logger.info(f"Loading model: {self.model_name}...")
-        
-        try:
-            self._tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-            self._model = AutoModelForCausalLM.from_pretrained(
-                self.model_name,
-                torch_dtype=torch.float32, # float32 for CPU stability
-                low_cpu_mem_usage=True
-            )
-            
-            self._pipe = pipeline(
-                "text-generation",
-                model=self._model,
-                tokenizer=self._tokenizer,
-                device=-1 if self.device == "cpu" else 0, # -1 for CPU
-                max_new_tokens=256,
-                do_sample=True,
-                temperature=0.7,
-                top_k=50,
-                top_p=0.95
-            )
-            logger.info("Model loaded successfully.")
-            
-        except Exception as e:
-            logger.error(f"Failed to load model: {e}")
-            raise e
+        if self.current_model_name:
+            config = next((item for item in SLM_LIST if item["name"] == self.current_model_name), self.default_model_config)
+            self._get_provider_instance(config)
 
     def generate_response(self, message: str, persona: str = "General Assistant") -> str:
         """
-        Generates a response using the loaded model.
+        Generates a response using the selected model via API or local fallback.
         """
-        if self._pipe is None:
-            self.load_model()
+        if not self.current_model_name:
+             return "Error: No model configured."
+             
+        config = next((item for item in SLM_LIST if item["name"] == self.current_model_name), self.default_model_config)
+        
+        provider = self._get_provider_instance(config)
+        if not provider:
+            return f"Error: Could not initialize provider for {self.current_model_name}. Please check API keys."
 
         from utils.persona_manager import get_persona_prompt
         persona_instructions = get_persona_prompt(persona)
+        
+        system_prompt = f"You are a helpful AI finance assistant. {persona_instructions}"
 
-        # Simple prompt engineering for TinyLlama Chat
-        # <|system|>
-        # You are a helpful AI assistant. {persona_instructions}</s>
-        # <|user|>
-        # {message}</s>
-        # <|assistant|>
-        
-        prompt = (
-            f"<|system|>\n"
-            f"You are a helpful AI assistant. {persona_instructions}\n"
-            f"</s>\n"
-            f"<|user|>\n"
-            f"{message}\n"
-            f"</s>\n"
-            f"<|assistant|>\n"
-        )
-        
-        try:
-            outputs = self._pipe(prompt)
-            generated_text = outputs[0]['generated_text']
-            
-            # Extract only the assistant's part
-            response = generated_text.split("<|assistant|>\n")[-1].strip()
-            return response
-            
-        except Exception as e:
-            logger.error(f"Generation failed: {e}")
-            return f"Error gathering insights: {str(e)}"
+        return provider.generate_response(system_prompt, message)
 
 # Singleton usage
 llm_engine = LLMEngine.get_instance()
