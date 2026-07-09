@@ -82,6 +82,9 @@ class AnalysisRequest(BaseModel):
     text_content: str
     model_name: str = "TinyLlama-1.1B"
 
+class RAGQueryRequest(BaseModel):
+    question: str
+
 # -------------------------------------------------
 # Endpoints
 # -------------------------------------------------
@@ -136,6 +139,18 @@ async def file_processing_endpoint(file: UploadFile = File(...)):
     except Exception as e:
         logger.error(f"File processing failed: {e}")
         raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/rag/ask")
+async def rag_ask_endpoint(request: RAGQueryRequest):
+    """
+    Answers a question grounded in previously uploaded/ingested documents.
+    """
+    try:
+        answer = await rag_service.ask(request.question)
+        return {"answer": answer}
+    except Exception as e:
+        logger.error(f"RAG query failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/analysis")
 def analysis_endpoint(request: AnalysisRequest):

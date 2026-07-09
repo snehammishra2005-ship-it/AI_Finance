@@ -171,6 +171,14 @@ def render_chat():
     with st.expander("📎 Attach a document"):
         render_file_upload()
 
+    use_rag = st.checkbox(
+        "📚 Answer using my uploaded documents",
+        value=st.session_state.get("use_rag", False),
+        help="When enabled, answers are grounded in documents you've uploaded "
+             "instead of a general chat response."
+    )
+    st.session_state.use_rag = use_rag
+
     # =================================================
     # CHAT INPUT
     # =================================================
@@ -214,31 +222,40 @@ def render_chat():
         # ---------------------------------------------
         with st.chat_message("assistant"):
 
-            with st.spinner(f"Thinking with {slm}..."):
+            spinner_text = (
+                "Searching your documents..." if use_rag
+                else f"Thinking with {slm}..."
+            )
+
+            with st.spinner(spinner_text):
 
                 try:
-                    # =========================================
-                    # Request Payload
-                    # =========================================
-                    payload = {
-                        "message": user_input,
-                        "persona": persona,
-                        "slm_model": slm
-                    }
-
                     # =========================================
                     # START TIMER
                     # =========================================
                     request_start = time.time()
 
                     # =========================================
-                    # API Request
+                    # API Request (RAG vs normal chat)
                     # =========================================
-                    response = requests.post(
-                        url=f"{BACKEND_BASE_URL}/chat",
-                        json=payload,
-                        timeout=120
-                    )
+                    if use_rag:
+                        response = requests.post(
+                            url=f"{BACKEND_BASE_URL}/rag/ask",
+                            json={"question": user_input},
+                            timeout=120
+                        )
+                    else:
+                        payload = {
+                            "message": user_input,
+                            "persona": persona,
+                            "slm_model": slm
+                        }
+
+                        response = requests.post(
+                            url=f"{BACKEND_BASE_URL}/chat",
+                            json=payload,
+                            timeout=120
+                        )
 
                     # =========================================
                     # HANDLE SUCCESS
@@ -247,15 +264,21 @@ def render_chat():
 
                         data = response.json()
 
-                        ai_response = data.get(
-                            "response",
-                            "No response returned from backend."
-                        )
-
-                        active_model = data.get(
-                            "model",
-                            slm
-                        )
+                        if use_rag:
+                            ai_response = data.get(
+                                "answer",
+                                "No answer returned from backend."
+                            )
+                            active_model = "Document RAG (Groq)"
+                        else:
+                            ai_response = data.get(
+                                "response",
+                                "No response returned from backend."
+                            )
+                            active_model = data.get(
+                                "model",
+                                slm
+                            )
 
                         # =====================================
                         # RESPONSE TIME
@@ -270,7 +293,7 @@ def render_chat():
                         # =====================================
                         save_test_report(
                             model_name=active_model,
-                            persona=persona,
+                            persona=persona if not use_rag else "N/A (RAG)",
                             prompt=user_input,
                             response=ai_response,
                             response_time=response_time,
@@ -288,7 +311,7 @@ def render_chat():
                             f"{response.text}"
                         )
 
-                        active_model = slm
+                        active_model = "Document RAG (Groq)" if use_rag else slm
 
                 # =============================================
                 # HANDLE TIMEOUT
@@ -300,7 +323,7 @@ def render_chat():
                         "The selected model may be taking too long to respond."
                     )
 
-                    active_model = slm
+                    active_model = "Document RAG (Groq)" if use_rag else slm
 
                 # =============================================
                 # HANDLE CONNECTION ERROR
@@ -312,7 +335,7 @@ def render_chat():
                         "Make sure FastAPI server is running."
                     )
 
-                    active_model = slm
+                    active_model = "Document RAG (Groq)" if use_rag else slm
 
                 # =============================================
                 # HANDLE UNEXPECTED ERROR
@@ -321,14 +344,17 @@ def render_chat():
 
                     ai_response = f"⚠️ Unexpected Error:\n\n{str(e)}"
 
-                    active_model = slm
+                    active_model = "Document RAG (Groq)" if use_rag else slm
 
             # =============================================
             # DISPLAY RESPONSE
             # =============================================
             st.markdown(ai_response)
 
-            st.caption(f"🤖 Model Used: {active_model}")
+            if use_rag:
+                st.caption("📚 Answered from your uploaded documents")
+            else:
+                st.caption(f"🤖 Model Used: {active_model}")
 
         # =================================================
         # SAVE ASSISTANT MESSAGE

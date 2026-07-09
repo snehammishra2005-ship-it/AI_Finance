@@ -3,7 +3,7 @@ import logging
 from lightrag import LightRAG, QueryParam
 
 from backend.services.rag.embedding_adapter import embedding_model
-from backend.services.rag.openrouter_adapter import gpt55_complete
+from backend.services.rag.groq_adapter import groq_complete
 
 logger = logging.getLogger(__name__)
 
@@ -15,8 +15,8 @@ class RAGService:
         self.rag = LightRAG(
             working_dir="./rag_storage",
 
-            llm_model_func=gpt55_complete,
-            llm_model_name="openai/gpt-5.5",
+            llm_model_func=groq_complete,
+            llm_model_name="llama-3.1-8b-instant",
 
             embedding_func=embedding_model,
         )
