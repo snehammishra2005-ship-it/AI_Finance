@@ -241,7 +241,10 @@ def render_chat():
                     if use_rag:
                         response = requests.post(
                             url=f"{BACKEND_BASE_URL}/rag/ask",
-                            json={"question": user_input},
+                            json={
+                                "question": user_input,
+                                "session_id": st.session_state.get("session_id", "default")
+                            },
                             timeout=120
                         )
                     else:

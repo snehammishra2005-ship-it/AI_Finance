@@ -2,7 +2,15 @@ import os
 
 from groq import AsyncGroq
 
-client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
+# Groq's free tier caps at 6000 tokens/minute, and LightRAG can burst
+# several extraction calls in quick succession (new upload + backlog
+# reprocessing). The SDK already retries with backoff on 429s, but its
+# default of 2 retries gives up before a per-minute window resets -
+# raising it buys more chances to succeed instead of failing outright.
+client = AsyncGroq(
+    api_key=os.getenv("GROQ_API_KEY"),
+    max_retries=5,
+)
 
 
 async def groq_complete(

@@ -35,18 +35,36 @@ def render_file_upload():
         if "current_file_name" not in st.session_state or st.session_state.current_file_name != uploaded_file.name:
             with st.spinner("Processing file..."):
                 try:
-                    files = {"file": (uploaded_file.name, open(file_path, "rb"), uploaded_file.type)}
-                    response = requests.post(f"{BACKEND_BASE_URL}/files", files=files)
-                    
+                    with open(file_path, "rb") as f:
+                        files = {"file": (uploaded_file.name, f, uploaded_file.type)}
+                        response = requests.post(
+                            f"{BACKEND_BASE_URL}/files",
+                            files=files,
+                            data={"session_id": st.session_state.get("session_id", "default")},
+                            timeout=120
+                        )
+
                     if response.status_code == 200:
                         data = response.json()
                         st.session_state.processed_text = data.get("full_text", "")
                         st.session_state.current_file_name = uploaded_file.name
-                        st.success(f"File processed! Text length: {len(st.session_state.processed_text)} chars")
+
+                        if data.get("rag_indexed", True):
+                            st.success(f"File processed! Text length: {len(st.session_state.processed_text)} chars")
+                        else:
+                            st.warning(data.get("message", "RAG indexing failed for this document."))
                     else:
                         st.error(f"Backend processing failed: {response.text}")
+                except requests.exceptions.Timeout:
+                    st.error(
+                        "⚠️ File processing timed out after 120s. The document "
+                        "may be too large, or RAG indexing is stuck retrying "
+                        "(e.g. hitting a provider rate limit). Try again shortly."
+                    )
+                except requests.exceptions.ConnectionError:
+                    st.error("⚠️ Could not connect to backend. Make sure the FastAPI server is running.")
                 except Exception as e:
-                    st.error(f"Connection error: {e}")
+                    st.error(f"Unexpected error: {e}")
 
         # 3. Trigger Analysis
         if st.button("Run SLM Analysis"):
@@ -58,13 +76,53 @@ def render_file_upload():
                             "text_content": st.session_state.processed_text,
                             "model_name": st.session_state.get("slm", "Phi-3 Mini")
                         }
-                        res = requests.post(f"{BACKEND_BASE_URL}/analysis", json=payload)
-                        
+                        res = requests.post(
+                            f"{BACKEND_BASE_URL}/analysis",
+                            json=payload,
+                            timeout=120
+                        )
+
                         if res.status_code == 200:
                             st.success("Analysis Complete! check 'Analysis' tab.")
                         else:
                             st.error(f"Analysis failed: {res.text}")
+                    except requests.exceptions.Timeout:
+                        st.error("⚠️ Analysis timed out after 120s. Try again, or pick a faster model.")
+                    except requests.exceptions.ConnectionError:
+                        st.error("⚠️ Could not connect to backend. Make sure the FastAPI server is running.")
                     except Exception as e:
-                        st.error(f"Connection error: {e}")
+                        st.error(f"Unexpected error: {e}")
             else:
                 st.warning("No processed text found. Please upload a valid file.")
+
+    # 4. Retry any documents whose RAG indexing previously failed
+    st.divider()
+    if st.button("🔄 Retry failed document indexing"):
+        with st.spinner("Retrying failed documents..."):
+            try:
+                res = requests.post(
+                    f"{BACKEND_BASE_URL}/rag/reprocess",
+                    json={"session_id": st.session_state.get("session_id", "default")},
+                    timeout=120
+                )
+
+                if res.status_code == 200:
+                    data = res.json()
+
+                    if data["attempted"] == 0:
+                        st.info("No failed documents to retry.")
+                    elif data["fixed"] == data["attempted"]:
+                        st.success(f"Fixed {data['fixed']} document(s) - they're now fully searchable.")
+                    else:
+                        st.warning(
+                            f"Fixed {data['fixed']} of {data['attempted']} document(s). "
+                            f"{data['still_failed']} still failing."
+                        )
+                else:
+                    st.error(f"Retry failed: {res.text}")
+            except requests.exceptions.Timeout:
+                st.error("⚠️ Retry timed out after 120s.")
+            except requests.exceptions.ConnectionError:
+                st.error("⚠️ Could not connect to backend. Make sure the FastAPI server is running.")
+            except Exception as e:
+                st.error(f"Unexpected error: {e}")

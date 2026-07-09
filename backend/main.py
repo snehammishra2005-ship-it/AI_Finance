@@ -7,7 +7,7 @@ This backend handles:
 - Analysis & scoring (CSV Generation)
 """
 
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
@@ -21,7 +21,7 @@ from config.settings import APP_NAME, APP_VERSION
 from backend.services.file_processor import FileProcessor
 from backend.services.scoring_engine import ScoringEngine
 from backend.services.llm_service import llm_engine
-from backend.services.rag.rag_service import rag_service
+from backend.services.rag.rag_service import rag_service_manager
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -38,8 +38,8 @@ async def lifespan(app: FastAPI):
         # Pre-load the model so the first request isn't slow
         # Warning: This downloads the model if not present (~600MB+)
         llm_engine.load_model()
-        await rag_service.initialize()
-        logger.info("LightRAG initialized.") 
+        # RAG services are now created lazily per session_id (see
+        # rag_service_manager), so there's nothing shared to pre-warm here.
     except Exception as e:
         logger.error(f"Failed to load SLM model on startup: {e}")
     
@@ -84,6 +84,10 @@ class AnalysisRequest(BaseModel):
 
 class RAGQueryRequest(BaseModel):
     question: str
+    session_id: str = "default"
+
+class RAGReprocessRequest(BaseModel):
+    session_id: str = "default"
 
 # -------------------------------------------------
 # Endpoints
@@ -121,18 +125,47 @@ def chat_endpoint(request: ChatRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/files")
-async def file_processing_endpoint(file: UploadFile = File(...)):
+async def file_processing_endpoint(
+    file: UploadFile = File(...),
+    session_id: str = Form("default")
+):
     """
     Receives an uploaded file, determines type, and extracts text.
+    RAG indexing is scoped to the caller's session_id so uploaded
+    documents aren't visible to other sessions.
     """
     try:
         content = await file.read()
         text = FileProcessor.extract_text(content, file.filename)
-        await rag_service.ingest_document(text)
+        rag_service = rag_service_manager.get(session_id)
+        rag_result = await rag_service.ingest_document(text, file_path=file.filename)
+
+        if rag_result["indexed"]:
+            message = "File processed successfully"
+        else:
+            error_text = rag_result["error"] or ""
+            is_rate_limit = "rate_limit" in error_text.lower() or "429" in error_text
+
+            if is_rate_limit:
+                message = (
+                    "Text extracted successfully, but RAG indexing hit the Groq "
+                    "rate limit and couldn't finish. This document isn't searchable "
+                    "yet - wait a minute for the limit to reset, then use "
+                    "'🔄 Retry failed document indexing' below."
+                )
+            else:
+                message = (
+                    "Text extracted successfully, but RAG indexing failed: "
+                    f"{error_text}. This document won't be searchable "
+                    "via 'Answer using my uploaded documents'."
+                )
+
+            logger.warning(f"RAG indexing failed for {file.filename}: {error_text}")
 
         return {
             "filename": file.filename,
-            "message": "File processed successfully",
+            "message": message,
+            "rag_indexed": rag_result["indexed"],
             "extracted_text_preview": text[:200],
             "full_text": text
         }
@@ -143,13 +176,30 @@ async def file_processing_endpoint(file: UploadFile = File(...)):
 @app.post("/rag/ask")
 async def rag_ask_endpoint(request: RAGQueryRequest):
     """
-    Answers a question grounded in previously uploaded/ingested documents.
+    Answers a question grounded in documents uploaded during this session
+    only (see session_id) - not the global set of every uploaded document.
     """
     try:
+        rag_service = rag_service_manager.get(request.session_id)
         answer = await rag_service.ask(request.question)
         return {"answer": answer}
     except Exception as e:
         logger.error(f"RAG query failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/rag/reprocess")
+async def rag_reprocess_endpoint(request: RAGReprocessRequest):
+    """
+    Retries any documents in this session whose RAG indexing previously
+    failed (e.g. a provider rate limit mid-extraction), so they can gain
+    full graph-based retrieval instead of staying vector-only forever.
+    """
+    try:
+        rag_service = rag_service_manager.get(request.session_id)
+        result = await rag_service.reprocess_failed_documents()
+        return result
+    except Exception as e:
+        logger.error(f"RAG reprocess failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/analysis")

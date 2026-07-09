@@ -1,5 +1,6 @@
 import os
 import sys
+import uuid
 import streamlit as st
 
 # =====================================================
@@ -44,6 +45,9 @@ defaults = {
     "slm": None,
     "persona": None,
     "page": "chat",
+    # Scopes RAG-uploaded documents to this browser session only, so one
+    # user's uploads never surface in another session's RAG answers.
+    "session_id": str(uuid.uuid4()),
 }
 
 for key, value in defaults.items():
