@@ -1,0 +1,37 @@
+# Normalize line endings across platforms.
+#
+# All text files are stored with LF in the repository AND checked out with
+# LF in the working tree (eol=lf), so Windows' core.autocrlf no longer
+# rewrites them to CRLF on checkout. This eliminates the recurring
+# "LF will be replaced by CRLF" warnings on git operations.
+* text=auto eol=lf
+
+# Windows batch scripts must keep CRLF to run correctly.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# Explicit text types (diffable, LF).
+*.py     text eol=lf
+*.md     text eol=lf
+*.txt    text eol=lf
+*.json   text eol=lf
+*.toml   text eol=lf
+*.yml    text eol=lf
+*.yaml   text eol=lf
+*.cfg    text eol=lf
+Dockerfile text eol=lf
+
+# Binary / generated assets: never alter contents or line endings.
+*.pdf     binary
+*.png     binary
+*.jpg     binary
+*.jpeg    binary
+*.gif     binary
+*.ico     binary
+*.woff    binary
+*.woff2   binary
+*.ttf     binary
+*.graphml binary
+*.bin     binary
+*.safetensors binary
