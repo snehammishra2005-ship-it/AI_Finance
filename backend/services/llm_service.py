@@ -4,16 +4,15 @@ from backend.services.api_providers import (
     OpenRouterProvider,
     GeminiProvider,
     GroqProvider,
-    AnthropicProvider,
-    LocalProvider
+    AnthropicProvider
 )
 
 logger = logging.getLogger(__name__)
 
 class LLMEngine:
     """
-    Acts as a router to dispatch generation requests to the correct API provider
-    or local model based on the selected configuration.
+    Acts as a router to dispatch generation requests to the correct API
+    provider based on the selected configuration.
     """
     
     _instance = None
@@ -59,8 +58,6 @@ class LLMEngine:
                 provider = GroqProvider(model_id)
             elif provider_type == "anthropic":
                 provider = AnthropicProvider(model_id)
-            elif provider_type == "local":
-                provider = LocalProvider(model_id)
             else:
                 logger.error(f"Unknown provider type: {provider_type}")
                 return None
@@ -86,7 +83,7 @@ class LLMEngine:
 
     def generate_response(self, message: str, persona: str = "General Assistant") -> str:
         """
-        Generates a response using the selected model via API or local fallback.
+        Generates a response using the selected model via its API provider.
         """
         if not self.current_model_name:
              return "Error: No model configured."

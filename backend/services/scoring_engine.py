@@ -12,7 +12,7 @@ class ScoringEngine:
     """
 
     @staticmethod
-    def analyze_and_score(filename: str, text_content: str, model_name: str = "TinyLlama-1.1B"):
+    def analyze_and_score(filename: str, text_content: str, model_name: str = "Llama 3.1 8B Instant (Groq)"):
         """
         Analyzes the text content and generates a scored CSV report.
         """

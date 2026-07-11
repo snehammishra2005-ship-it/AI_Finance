@@ -20,12 +20,12 @@ def render_architecture_view():
     
     ### 2. Backend (FastAPI)
     The backend service acts as the core engine, exposing RESTful API endpoints:
-    - **`/chat`**: Processes incoming chat queries using an integrated SLM (`TinyLlama-1.1B`). Supports persona-based conversational models.
+    - **`/chat`**: Processes incoming chat queries by routing to the selected LLM provider (default: Llama 3.1 8B via Groq). Supports persona-based conversational models.
     - **`/files`**: Handles document uploads, parsing the files to extract text content which is returned to the frontend.
-    - **`/analysis`**: Triggers a scoring engine to analyze extracted text using the SLM and generate a scored CSV report containing financial remarks.
-    
-    ### 3. Core AI Engine (`TinyLlama-1.1B`)
-    Handles language generation for chat interactions and snippet analysis during document processing. It runs completely locally for privacy.
+    - **`/analysis`**: Triggers a scoring engine to analyze extracted text using the selected LLM and generate a scored CSV report containing financial remarks.
+
+    ### 3. Core AI Engine (Multi-Provider LLM Router)
+    Routes generation requests to one of several API-backed LLMs (Groq, OpenRouter, Google Gemini, Anthropic). Groq's Llama 3.1 8B is the default for fast, reliable responses.
     
     ### 4. File Processing Engine
     Uses specialized libraries (`pdfplumber`, `python-docx`, `python-pptx`) to extract text from a variety of document formats before analysis.

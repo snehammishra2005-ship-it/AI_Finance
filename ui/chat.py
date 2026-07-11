@@ -21,7 +21,7 @@ def render_chat_header():
     app title on the left, compact Model / Persona pickers on the right.
     """
 
-    model_names = [m["name"] for m in SLM_LIST] or ["Local Fallback"]
+    model_names = [m["name"] for m in SLM_LIST] or ["Llama 3.1 8B Instant (Groq)"]
     personas = get_persona_names() or ["General User"]
 
     current_slm = st.session_state.get("slm") or model_names[0]
@@ -214,7 +214,7 @@ def render_chat():
 
         slm = st.session_state.get(
             "slm",
-            "TinyLlama (Local Fallback)"
+            "Llama 3.1 8B Instant (Groq)"
         )
 
         # ---------------------------------------------

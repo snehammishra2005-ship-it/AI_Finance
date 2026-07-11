@@ -75,12 +75,12 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     message: str
     persona: str = "General User"
-    slm_model: str = "TinyLlama-1.1B"
+    slm_model: str = "Llama 3.1 8B Instant (Groq)"
 
 class AnalysisRequest(BaseModel):
     filename: str
     text_content: str
-    model_name: str = "TinyLlama-1.1B"
+    model_name: str = "Llama 3.1 8B Instant (Groq)"
 
 class RAGQueryRequest(BaseModel):
     question: str

@@ -74,7 +74,7 @@ def render_file_upload():
                         payload = {
                             "filename": uploaded_file.name,
                             "text_content": st.session_state.processed_text,
-                            "model_name": st.session_state.get("slm", "Phi-3 Mini")
+                            "model_name": st.session_state.get("slm", "Llama 3.1 8B Instant (Groq)")
                         }
                         res = requests.post(
                             f"{BACKEND_BASE_URL}/analysis",
