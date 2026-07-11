@@ -22,14 +22,23 @@ class RAGService:
     Wraps a single LightRAG instance rooted at its own working_dir, so each
     session's ingested documents and graph/vector stores stay isolated from
     every other session's.
+
+    working_dir alone is NOT sufficient for isolation: LightRAG's storage
+    backends bind to a process-wide shared in-memory dict keyed by
+    `workspace` (default: os.getenv("WORKSPACE", "") - the same empty
+    string for every instance unless set explicitly). Without passing a
+    distinct workspace per session, multiple RAGService instances in this
+    one backend process would share that in-memory store and leak data
+    across sessions even though each writes to a separate working_dir file.
     """
 
-    def __init__(self, working_dir: str):
+    def __init__(self, working_dir: str, workspace: str):
 
         os.makedirs(working_dir, exist_ok=True)
 
         self.rag = LightRAG(
             working_dir=working_dir,
+            workspace=workspace,
 
             llm_model_func=groq_complete,
             llm_model_name="llama-3.1-8b-instant",
@@ -148,8 +157,10 @@ class RAGServiceManager:
             raise ValueError(f"Invalid session_id: {session_id!r}")
 
         if session_id not in self._services:
-            working_dir = os.path.join(RAG_SESSIONS_DIR, session_id)
-            self._services[session_id] = RAGService(working_dir)
+            # LightRAG itself nests a workspace subdirectory under
+            # working_dir, so working_dir here is just the shared parent -
+            # passing the session_id again would double it up.
+            self._services[session_id] = RAGService(RAG_SESSIONS_DIR, workspace=session_id)
 
         return self._services[session_id]
 
