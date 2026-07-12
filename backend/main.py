@@ -38,8 +38,10 @@ async def lifespan(app: FastAPI):
         # Pre-load the model so the first request isn't slow
         # Warning: This downloads the model if not present (~600MB+)
         llm_engine.load_model()
-        # RAG services are now created lazily per session_id (see
+        # RAG services are created lazily per session_id (see
         # rag_service_manager), so there's nothing shared to pre-warm here.
+        # Sweep stale on-disk session dirs so RAG storage stays bounded.
+        rag_service_manager.sweep_stale_sessions()
     except Exception as e:
         logger.error(f"Failed to load SLM model on startup: {e}")
     
@@ -137,7 +139,7 @@ async def file_processing_endpoint(
     try:
         content = await file.read()
         text = FileProcessor.extract_text(content, file.filename)
-        rag_service = rag_service_manager.get(session_id)
+        rag_service = await rag_service_manager.get(session_id)
         rag_result = await rag_service.ingest_document(text, file_path=file.filename)
 
         if rag_result["indexed"]:
@@ -180,7 +182,7 @@ async def rag_ask_endpoint(request: RAGQueryRequest):
     only (see session_id) - not the global set of every uploaded document.
     """
     try:
-        rag_service = rag_service_manager.get(request.session_id)
+        rag_service = await rag_service_manager.get(request.session_id)
         answer = await rag_service.ask(request.question)
         return {"answer": answer}
     except Exception as e:
@@ -195,7 +197,7 @@ async def rag_reprocess_endpoint(request: RAGReprocessRequest):
     full graph-based retrieval instead of staying vector-only forever.
     """
     try:
-        rag_service = rag_service_manager.get(request.session_id)
+        rag_service = await rag_service_manager.get(request.session_id)
         result = await rag_service.reprocess_failed_documents()
         return result
     except Exception as e:
