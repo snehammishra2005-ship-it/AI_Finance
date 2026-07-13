@@ -22,6 +22,7 @@ from backend.services.file_processor import FileProcessor
 from backend.services.scoring_engine import ScoringEngine
 from backend.services.llm_service import llm_engine
 from backend.services.rag.rag_service import rag_service_manager
+from backend.services.research_service import deep_research
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -90,6 +91,11 @@ class RAGQueryRequest(BaseModel):
 
 class RAGReprocessRequest(BaseModel):
     session_id: str = "default"
+
+class ResearchRequest(BaseModel):
+    question: str
+    session_id: str = "default"
+    persona: str = "General User"
 
 # -------------------------------------------------
 # Endpoints
@@ -202,6 +208,24 @@ async def rag_reprocess_endpoint(request: RAGReprocessRequest):
         return result
     except Exception as e:
         logger.error(f"RAG reprocess failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/research")
+async def research_endpoint(request: ResearchRequest):
+    """
+    Deep research: combines live web search (Tavily) with the caller's
+    uploaded documents (session-scoped) into a single cited report.
+    """
+    try:
+        logger.info(f"Research request: {request.question[:40]}... | session {request.session_id}")
+        result = await deep_research(
+            question=request.question,
+            session_id=request.session_id,
+            persona=request.persona,
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Research failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/analysis")

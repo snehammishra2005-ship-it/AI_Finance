@@ -58,9 +58,10 @@ def render_sidebar():
         # =================================================
         # PAGE NAVIGATION
         # =================================================
-        nav_labels = ["💬 Chat", "📈 Analysis", "🏗️ Architecture"]
+        nav_labels = ["💬 Chat", "🔬 Research", "📈 Analysis", "🏗️ Architecture"]
         nav_map = {
             "💬 Chat": "chat",
+            "🔬 Research": "research",
             "📈 Analysis": "analysis",
             "🏗️ Architecture": "architecture",
         }
