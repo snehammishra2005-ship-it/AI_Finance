@@ -1,146 +1,125 @@
 # Deep Research Integration — Build & Test Report
 
-**Feature:** "Deep Research" in Q&A — a new mode that answers a question by
-combining **live web search** with the user's **uploaded documents**, then
-synthesizing a single cited report.
+**Feature:** "Deep Research" in Q&A — web search built directly into the chat.
+When enabled, the assistant searches the live web, answers with **inline
+`[1][2]` citations**, and lists the **sources it used** beneath the reply
+(ChatGPT / Perplexity / NotebookLM style).
 
-**Status:** ✅ Built and verified working end-to-end (web + documents).
+**Status:** ✅ Built and verified working end-to-end.
+
+> **Note:** This replaces an earlier design that used a separate "Research"
+> page producing a long combined web+document report. Per updated
+> requirements, Deep Research is now a **toggle inside the normal chat** that
+> shows the **list of sources used** below each answer. The standalone page
+> and its `/research` endpoint were removed.
 
 ---
 
-## 1. What was built
+## 1. How it works (user's view)
 
-A dedicated **🔬 Research** page (new sidebar tab, alongside Chat / Analysis /
-Architecture) backed by a new research pipeline.
+1. Open the **Chat** tab.
+2. Tick **"🌐 Search the web"** (a toggle next to "📚 Answer using my uploaded
+   documents"). Off by default — the user opts in.
+3. Ask a question. The assistant searches the web, answers with inline
+   `[1]`, `[2]` citation markers, and shows a **"🌐 N sources"** list beneath
+   the answer — each source is a linked title + domain + snippet.
+4. Sources stay attached to that message as the conversation continues.
+
+If both toggles are on, **web search takes priority** over the document mode.
+
+---
+
+## 2. Architecture
 
 | Layer | File | Role |
 |-------|------|------|
-| Web search | `backend/services/research_service.py` | Queries **Tavily** for current web sources |
-| Document retrieval | same, via `rag_service_manager` | Pulls raw context from the session's **LightRAG** documents (`only_need_context=True`, no extra LLM call) |
-| Synthesis | same, via Groq client | One **Groq `llama-3.1-8b-instant`** call combines both into a cited report (max 1500 tokens) |
-| API | `backend/main.py` → `POST /research` | `{question, session_id, persona}` → `{report, web_sources, web_configured, used_docs, notes}` |
-| UI | `ui/research.py` | Question box, "Run Deep Research", rendered report, clickable web sources, transparency notes |
+| Web search | `backend/services/research_service.py` | `web_search()` queries **Tavily**; `build_web_prompt()` turns results into a citation-numbered prompt + a clean sources list |
+| Chat API | `backend/main.py` → `POST /chat` | New `web_search: bool` flag. When true, augments the message with web results and returns `{response, model, sources, web_note}` |
+| Synthesis | `backend/services/llm_service.py` | The selected LLM (default **Groq Llama 3.1 8B**) writes the cited answer |
+| UI | `ui/chat.py` | "🌐 Search the web" toggle; `render_sources()` shows the sources list; sources are persisted in each message so they survive reruns |
 
-**Session-scoped:** research reads only the caller's own uploaded documents
-(same per-session isolation as the RAG feature), so one user's documents never
-leak into another's research.
-
-**Graceful degradation:** every source is optional — the pipeline still answers
-(and says what it used) if the web key is missing, if the session has no
-documents, or both.
-
----
-
-## 2. Key design decision: why Tavily, not Groq's built-in web search
-
-The original plan was to use **Groq's compound/agentic models** (native web
-search) to reuse the existing key. During verification this was found to be
-**blocked on the free tier**: both `groq/compound` and `groq/compound-mini`
-returned **`413 Request Too Large`** on even a 5-word prompt, while regular
-Groq models worked fine. So the web-search source was switched to **Tavily**
-(free tier, purpose-built for LLM research); Groq's regular Llama model still
-does the synthesis.
+**Response shape** (`/chat` with `web_search: true`):
+```json
+{
+  "response": "…answer with [1][2] citations…",
+  "model": "Llama 3.1 8B Instant (Groq)",
+  "sources": [{"n": 1, "title": "...", "url": "...", "domain": "...", "snippet": "..."}],
+  "web_note": null
+}
+```
+`web_note` carries a transparency message when web search was requested but
+unavailable (no key / failed / no results); `sources` is empty in that case.
 
 ---
 
-## 3. Test results
+## 3. Key design decision: Tavily, not Groq's built-in web search
 
-All tests run against the live backend (`POST /research`) after the Tavily key
-was added to `.env`.
+The original intent was to use **Groq's compound/agentic models** (native web
+search) to reuse the existing key. Verification found this **blocked on the
+free tier**: both `groq/compound` and `groq/compound-mini` returned
+**`413 Request Too Large`** on even a 5-word prompt, while regular Groq models
+worked fine. So web search uses **Tavily** (free tier, purpose-built for LLM
+research); Groq's regular Llama model writes the answer.
 
-### Test 0 — Tavily key sanity check ✅
-Direct call to `_web_search("current RBI repo rate India 2026")`:
-- Returned a web overview ("current RBI repo rate for 2026 is 5.25%") plus
-  **4 results** with real titles and URLs (bajajhousingfinance, cleartax,
-  bajajfinserv, …). Key is valid and live.
+---
 
-### Test 1 — Web-only research ✅
-Fresh session (no documents), question requiring current info:
-*"What is the current RBI repo rate and the RBI's most recent monetary policy decision?"*
+## 4. Test results
+
+Run live against `POST /chat` with the Tavily key configured.
+
+### Test 1 — Web search ON ✅
+*"What is the current RBI repo rate and recent policy stance?"* (`web_search: true`)
 
 | Field | Result |
 |-------|--------|
-| `web_configured` | **True** |
-| `used_docs` | False (correct — none uploaded) |
-| `web_sources` | **4** (PIB, bajajfinserv, bankbazaar, NDTV) |
-| `notes` | "No relevant content found in your uploaded documents" |
+| `sources` | **6** (pib.gov.in, corplawupdates.in, bankbazaar.com, youtube.com…) |
+| Inline citations in answer | `[1]`, `[3]`, `[4]` — matching the numbered sources |
+| `web_note` | none (search succeeded) |
+| Answer | Current & grounded: *"the current RBI repo rate is 5.25% as decided in the 61st MPC meeting in June 2026 [3]"* |
 
-Report was current and grounded — *"The current RBI repo rate is 5.25% [W2],
-[W4]"* — with inline `[W#]` citations matching the numbered sources.
+A second run on GNPA (bad-loan) trends returned 6 sources (livemint, PIB,
+ICRA, Brickwork Ratings…) with inline `[1][4]` citations and current figures
+(GNPA 2.31% by March 2025) — matching the reference UI's example topic.
 
-### Test 2 — Combined web + documents ✅ (the headline test)
-Uploaded a confidential company brief (Meridian Housing Finance: Rs 8,400 cr
-loan book, +19% YoY, 3.8% NIM), then asked a question needing **both** the
-doc's private figures **and** live macro data:
-*"Given the current RBI repo rate, how might Meridian Housing Finance be affected? Use their loan book and margin figures."*
+### Test 2 — Web search OFF (normal chat) ✅
+*"What is a mutual fund in one sentence?"* (`web_search: false`)
+- `sources`: **0**, `web_note`: none — a plain, persona-styled answer with no
+  sources panel. Confirms the feature is cleanly opt-in and doesn't affect
+  normal chat.
 
-| Field | Result |
-|-------|--------|
-| `web_configured` | **True** |
-| `used_docs` | **True** |
-| `web_sources` | 4 |
-| `notes` | none (both sources available) |
-
-The report genuinely **fused both sources**:
-- `[Docs]` citations for the company's private figures (Rs 8,400 cr loan book,
-  +19% YoY, repo-rate sensitivity) — from the uploaded brief.
-- `[W#]` citations for live web context (repo-rate mechanics, home-loan impact).
-- A **References** section listing both the web URLs and the `[Docs]` source.
-
-### Test 3 — Graceful degradation ✅ (verified before the key was added)
-- **Docs-only** (no web key): answered from the uploaded document with an
-  accurate report and a clear "web search not configured" note.
-- **No docs + no web:** still answered from model knowledge, with both
-  transparency notes present.
+### Test 3 — RAG mode unaffected ✅
+Ingested a document and queried via the document toggle (`/rag/ask`) — still
+returns the correct grounded answer. The redo didn't disturb the existing
+document-Q&A path.
 
 ---
 
-## 4. Honest findings / caveats
+## 5. Honest findings / caveats
 
-1. **Entity conflation across sources (accuracy risk).** In Test 2, the
-   fictional "Meridian Housing Finance" shared a name with a real US company
-   ("Meridian Corp / MRBK") that Tavily surfaced, and the synthesis pulled a
-   few web facts (FHLB borrowings) from the wrong entity while correctly using
-   `[Docs]` for the real figures. This is inherent to blending live web with
-   private documents — more likely with generic/ambiguous names, less likely
-   for real, well-known companies. The citations still make the provenance
-   auditable, but users should sanity-check when names are ambiguous.
-
-2. **Synthesis quality is bounded by the model.** All synthesis runs on Groq
-   `llama-3.1-8b-instant` (the one reliably working provider). It's fast and
-   good, but not a frontier model — deep multi-hop reasoning is limited.
-
-3. **Free-tier limits still apply.** Groq's ~6,000 tokens/minute cap means
-   web results and document context are truncated (4 web results, ~600 chars
-   each; ~2,500 chars of doc context) to fit one synthesis call. Rapid repeated
-   research can still hit rate limits.
-
-4. **Single-pass, not iterative.** This is "research" as *search → gather →
-   synthesize once*, not a multi-step agent that reformulates queries and digs
-   deeper. That's a reasonable, reliable v1; true iterative deep research would
-   be a follow-up.
-
----
-
-## 5. How to use
-
-1. Open the **🔬 Research** tab in the sidebar.
-2. (Optional) Upload documents in the **Chat** tab first — research will draw
-   from them for the current session.
-3. Type a research question and click **Run Deep Research**.
-4. Read the report; expand **Sources** for the web links and **About this
-   answer's sources** for what was/wasn't used.
-
-**Requirements:** `TAVILY_API_KEY` in `.env` (already added) for web search;
-`GROQ_API_KEY` for synthesis.
+1. **Source quality varies.** Tavily returns whatever is most relevant, which
+   can include blogs and YouTube videos alongside authoritative sources (e.g.
+   the repo-rate query surfaced a few `youtube.com` results). The model still
+   cites by number, so provenance is visible, but sources aren't filtered to
+   "authoritative only." A domain allow/deny list could be added later.
+2. **Answer length.** Chat answers run through the provider's 512-token cap —
+   good for a cited chat reply, not a long-form report (which was the point of
+   moving away from the report page).
+3. **Synthesis model.** Runs on Groq `llama-3.1-8b-instant` (the reliably
+   working provider) — fast and solid, not a frontier model.
+4. **Free-tier limits.** Web result content and count are capped (6 results,
+   ~600 chars each) to keep each call within Groq's ~6,000 tokens/minute free
+   tier; rapid repeated use can still hit rate limits.
+5. **Single-pass.** Search → answer with citations in one shot, not a
+   multi-step agent that reformulates queries and drills down.
 
 ---
 
 ## 6. Verification method note
 
-The backend pipeline was verified directly via `POST /research` (evidence
-above). The Research page itself was confirmed to render in the UI (the new
-sidebar tab appears and the page loads without errors); live in-browser
-click-through screenshots were interrupted by a flaky browser-automation
-connection, but the page consumes exactly the response shape validated in the
-endpoint tests.
+The backend path was verified directly via `POST /chat` (evidence above: real
+sources, inline citations, correct empty-sources behavior when off). The chat
+UI imports cleanly and the frontend boots without errors; it renders exactly
+the `sources` shape validated here (a "🌐 N sources" expander with linked
+title, domain, and snippet, persisted per message). A live in-browser
+screenshot of the sources panel was not captured this round due to a flaky
+browser-automation connection.

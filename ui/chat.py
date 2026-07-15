@@ -141,6 +141,30 @@ def save_test_report(
 
 
 # -------------------------------------------------
+# SOURCES (Perplexity-style list under an answer)
+# -------------------------------------------------
+def render_sources(sources):
+    """Render the list of web sources the model used for an answer."""
+    if not sources:
+        return
+
+    with st.expander(f"🌐 {len(sources)} sources"):
+        for s in sources:
+            title = s.get("title") or s.get("url", "")
+            url = s.get("url", "")
+            domain = s.get("domain", "")
+            snippet = s.get("snippet", "")
+
+            st.markdown(f"**[{s.get('n')}] [{title}]({url})**")
+
+            meta = f"`{domain}`" if domain else ""
+            if snippet:
+                meta = f"{meta} — {snippet}" if meta else snippet
+            if meta:
+                st.caption(meta)
+
+
+# -------------------------------------------------
 # Chat Renderer
 # -------------------------------------------------
 def render_chat():
@@ -164,6 +188,7 @@ def render_chat():
 
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
+            render_sources(message.get("sources"))
 
     # =================================================
     # FILE UPLOAD SECTION
@@ -171,13 +196,27 @@ def render_chat():
     with st.expander("📎 Attach a document"):
         render_file_upload()
 
-    use_rag = st.checkbox(
-        "📚 Answer using my uploaded documents",
-        value=st.session_state.get("use_rag", False),
-        help="When enabled, answers are grounded in documents you've uploaded "
-             "instead of a general chat response."
-    )
+    toggle_col1, toggle_col2 = st.columns(2)
+
+    with toggle_col1:
+        use_rag = st.checkbox(
+            "📚 Answer using my uploaded documents",
+            value=st.session_state.get("use_rag", False),
+            help="When enabled, answers are grounded in documents you've uploaded "
+                 "instead of a general chat response."
+        )
+
+    with toggle_col2:
+        use_web = st.checkbox(
+            "🌐 Search the web",
+            value=st.session_state.get("use_web", False),
+            help="When enabled, the assistant searches the web and lists the "
+                 "sources it used beneath the answer. Takes priority over the "
+                 "document option if both are on."
+        )
+
     st.session_state.use_rag = use_rag
+    st.session_state.use_web = use_web
 
     # =================================================
     # CHAT INPUT
@@ -218,27 +257,36 @@ def render_chat():
         )
 
         # ---------------------------------------------
+        # Determine mode (web search takes priority over docs)
+        # ---------------------------------------------
+        if use_web:
+            mode = "web"
+        elif use_rag:
+            mode = "rag"
+        else:
+            mode = "chat"
+
+        # ---------------------------------------------
         # Assistant Response
         # ---------------------------------------------
         with st.chat_message("assistant"):
 
-            spinner_text = (
-                "Searching your documents..." if use_rag
-                else f"Thinking with {slm}..."
-            )
+            spinner_text = {
+                "web": "Searching the web...",
+                "rag": "Searching your documents...",
+                "chat": f"Thinking with {slm}...",
+            }[mode]
+
+            sources = []
+            web_note = None
 
             with st.spinner(spinner_text):
 
                 try:
-                    # =========================================
-                    # START TIMER
-                    # =========================================
                     request_start = time.time()
 
-                    # =========================================
-                    # API Request (RAG vs normal chat)
-                    # =========================================
-                    if use_rag:
+                    # -------- Request per mode --------
+                    if mode == "rag":
                         response = requests.post(
                             url=f"{BACKEND_BASE_URL}/rag/ask",
                             json={
@@ -248,123 +296,90 @@ def render_chat():
                             timeout=120
                         )
                     else:
-                        payload = {
-                            "message": user_input,
-                            "persona": persona,
-                            "slm_model": slm
-                        }
-
                         response = requests.post(
                             url=f"{BACKEND_BASE_URL}/chat",
-                            json=payload,
+                            json={
+                                "message": user_input,
+                                "persona": persona,
+                                "slm_model": slm,
+                                "web_search": (mode == "web"),
+                            },
                             timeout=120
                         )
 
-                    # =========================================
-                    # HANDLE SUCCESS
-                    # =========================================
+                    # -------- Success --------
                     if response.status_code == 200:
 
                         data = response.json()
 
-                        if use_rag:
-                            ai_response = data.get(
-                                "answer",
-                                "No answer returned from backend."
-                            )
+                        if mode == "rag":
+                            ai_response = data.get("answer", "No answer returned from backend.")
                             active_model = "Document RAG (Groq)"
                         else:
-                            ai_response = data.get(
-                                "response",
-                                "No response returned from backend."
-                            )
-                            active_model = data.get(
-                                "model",
-                                slm
-                            )
+                            ai_response = data.get("response", "No response returned from backend.")
+                            active_model = data.get("model", slm)
+                            sources = data.get("sources", []) or []
+                            web_note = data.get("web_note")
 
-                        # =====================================
-                        # RESPONSE TIME
-                        # =====================================
-                        response_time = round(
-                            time.time() - request_start,
-                            2
-                        )
+                        response_time = round(time.time() - request_start, 2)
 
-                        # =====================================
-                        # AUTO SAVE REPORT
-                        # =====================================
                         save_test_report(
                             model_name=active_model,
-                            persona=persona if not use_rag else "N/A (RAG)",
+                            persona=persona if mode != "rag" else "N/A (RAG)",
                             prompt=user_input,
                             response=ai_response,
                             response_time=response_time,
                             status="SUCCESS"
                         )
 
-                    # =========================================
-                    # HANDLE BACKEND ERROR
-                    # =========================================
+                    # -------- Backend error --------
                     else:
-
                         ai_response = (
                             f"⚠️ Backend Error "
-                            f"({response.status_code}):\n\n"
-                            f"{response.text}"
+                            f"({response.status_code}):\n\n{response.text}"
                         )
+                        active_model = slm
 
-                        active_model = "Document RAG (Groq)" if use_rag else slm
-
-                # =============================================
-                # HANDLE TIMEOUT
-                # =============================================
                 except requests.exceptions.Timeout:
-
                     ai_response = (
                         "⚠️ Request timed out.\n\n"
                         "The selected model may be taking too long to respond."
                     )
+                    active_model = slm
 
-                    active_model = "Document RAG (Groq)" if use_rag else slm
-
-                # =============================================
-                # HANDLE CONNECTION ERROR
-                # =============================================
                 except requests.exceptions.ConnectionError:
-
                     ai_response = (
                         "⚠️ Could not connect to backend.\n\n"
                         "Make sure FastAPI server is running."
                     )
+                    active_model = slm
 
-                    active_model = "Document RAG (Groq)" if use_rag else slm
-
-                # =============================================
-                # HANDLE UNEXPECTED ERROR
-                # =============================================
                 except Exception as e:
-
                     ai_response = f"⚠️ Unexpected Error:\n\n{str(e)}"
+                    active_model = slm
 
-                    active_model = "Document RAG (Groq)" if use_rag else slm
-
-            # =============================================
-            # DISPLAY RESPONSE
-            # =============================================
+            # -------- Display --------
             st.markdown(ai_response)
 
-            if use_rag:
+            render_sources(sources)
+
+            if web_note:
+                st.caption(f"ℹ️ {web_note}")
+
+            if mode == "rag":
                 st.caption("📚 Answered from your uploaded documents")
+            elif mode == "web":
+                st.caption(f"🌐 Web search · {active_model}")
             else:
                 st.caption(f"🤖 Model Used: {active_model}")
 
         # =================================================
-        # SAVE ASSISTANT MESSAGE
+        # SAVE ASSISTANT MESSAGE (with sources so they persist)
         # =================================================
         assistant_message = {
             "role": "assistant",
-            "content": ai_response
+            "content": ai_response,
+            "sources": sources,
         }
 
         st.session_state.messages.append(assistant_message)

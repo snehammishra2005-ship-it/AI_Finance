@@ -1,41 +1,28 @@
 """
-Deep Research service.
+Web search helper for chat.
 
-Combines live web search (Tavily) with the user's uploaded documents
-(per-session LightRAG) and synthesizes a single cited research report via
-Groq. Every part degrades gracefully: if the Tavily key is missing the
-report is built from documents + model knowledge; if the session has no
-documents it relies on the web; if neither is available it answers from the
-model's own knowledge and says so.
+Powers the "Search the web" mode: queries Tavily for current sources,
+formats them into a citation-numbered prompt for the LLM, and returns a
+clean list of the sources so the chat UI can show them Perplexity-style
+beneath the answer.
 """
 
 import os
-import asyncio
 import logging
+from urllib.parse import urlparse
 
 import requests
-from lightrag import QueryParam
-
-from backend.services.rag.rag_service import rag_service_manager
-from backend.services.rag.groq_adapter import client as groq_client
 
 logger = logging.getLogger(__name__)
 
 TAVILY_ENDPOINT = "https://api.tavily.com/search"
 
-# Synthesis model + budget. Research reports need more room than a normal
-# chat reply (providers cap those at 512), but input is capped below to stay
-# within Groq's free-tier tokens-per-minute limit.
-SYNTHESIS_MODEL = "llama-3.1-8b-instant"
-SYNTHESIS_MAX_TOKENS = 1500
-
-# Input caps (characters) so a single synthesis call stays within TPM limits.
-MAX_WEB_RESULTS = 4
+MAX_WEB_RESULTS = 6
 MAX_WEB_CONTENT_CHARS = 600
-MAX_DOC_CONTEXT_CHARS = 2500
+MAX_SNIPPET_CHARS = 220
 
 
-def _web_search(query: str) -> dict | None:
+def web_search(query: str) -> dict | None:
     """
     Query Tavily for web sources. Returns:
       - None            if no TAVILY_API_KEY is configured
@@ -64,11 +51,12 @@ def _web_search(query: str) -> dict | None:
             "answer": (data.get("answer") or "").strip(),
             "results": [
                 {
-                    "title": r.get("title", "") or "",
-                    "url": r.get("url", "") or "",
-                    "content": (r.get("content", "") or "")[:MAX_WEB_CONTENT_CHARS],
+                    "title": (r.get("title") or "").strip(),
+                    "url": (r.get("url") or "").strip(),
+                    "content": (r.get("content") or "").strip()[:MAX_WEB_CONTENT_CHARS],
                 }
                 for r in data.get("results", [])[:MAX_WEB_RESULTS]
+                if r.get("url")
             ],
         }
     except Exception as e:
@@ -76,106 +64,41 @@ def _web_search(query: str) -> dict | None:
         return {"error": str(e)}
 
 
-async def _doc_context(session_id: str, query: str) -> str:
-    """Retrieve raw retrieval context from the session's uploaded documents
-    (no synthesis LLM call). Returns '' if none or on error."""
+def _domain(url: str) -> str:
     try:
-        svc = await rag_service_manager.get(session_id)
-        await svc.initialize()
-        ctx = await svc.rag.aquery(
-            query,
-            param=QueryParam(mode="mix", only_need_context=True),
-        )
-        ctx = (ctx or "").strip()
-        # Guard against LightRAG's "no context" sentinel responses.
-        if not ctx or "[no-context]" in ctx.lower():
-            return ""
-        return ctx[:MAX_DOC_CONTEXT_CHARS]
-    except Exception as e:
-        logger.warning(f"Doc context retrieval failed for session {session_id}: {e}")
+        return urlparse(url).netloc.replace("www.", "")
+    except Exception:
         return ""
 
 
-def _build_prompt(question: str, web: dict | None, doc_ctx: str) -> tuple[str, list]:
-    """Assemble the synthesis prompt and the list of web sources used."""
-    web_results = web["results"] if (web and "error" not in web) else []
-
-    web_block = ""
-    if web and "error" not in web and web.get("answer"):
-        web_block += f"Web overview: {web['answer']}\n\n"
-    for i, r in enumerate(web_results, 1):
-        web_block += f"[W{i}] {r['title']} — {r['url']}\n{r['content']}\n\n"
-
-    prompt = (
-        "You are a financial research assistant. Using ONLY the sources below, "
-        "write a thorough, well-structured research answer to the question. Use "
-        "clear headings and bullet points where helpful. Cite web sources inline "
-        "as [W1], [W2] matching the numbered items, and cite the user's uploaded "
-        "documents as [Docs] when you use them. If the sources conflict or are "
-        "insufficient, say so plainly. Do not invent facts, numbers, or citations.\n\n"
-        f"QUESTION:\n{question}\n\n"
-        f"=== WEB SOURCES ===\n{web_block or '(no web sources available)'}\n\n"
-        f"=== UPLOADED DOCUMENTS ===\n{doc_ctx or '(no relevant uploaded documents)'}\n\n"
-        "Write the research answer now."
-    )
-    return prompt, web_results
-
-
-async def deep_research(question: str, session_id: str, persona: str = "General User") -> dict:
+def build_web_prompt(user_message: str, results: list) -> tuple[str, list]:
     """
-    Run web + document research and synthesize a cited report.
+    Build a citation-numbered prompt from web results and the parallel list
+    of sources for the UI.
 
-    Returns:
-      {
-        "report": str,
-        "web_sources": [{"title","url"}],
-        "web_configured": bool,   # Tavily key present and search succeeded
-        "used_docs": bool,        # uploaded-document context was used
-        "notes": [str],           # transparency notes about missing sources
-      }
+    Returns (augmented_message, sources) where each source is
+    {"n", "title", "url", "domain", "snippet"}.
     """
-    # Run web search (blocking requests) off the event loop, and doc
-    # retrieval concurrently.
-    web_task = asyncio.to_thread(_web_search, question)
-    doc_task = _doc_context(session_id, question)
-    web, doc_ctx = await asyncio.gather(web_task, doc_task)
+    sources = []
+    block = ""
 
-    notes = []
-    if web is None:
-        notes.append("Web search is not configured (no TAVILY_API_KEY set), so this answer does not include live web sources.")
-    elif "error" in web:
-        notes.append("Web search failed for this query; answer is based on uploaded documents and model knowledge only.")
-    if not doc_ctx:
-        notes.append("No relevant content was found in your uploaded documents for this question.")
+    for i, r in enumerate(results, 1):
+        sources.append({
+            "n": i,
+            "title": r["title"] or r["url"],
+            "url": r["url"],
+            "domain": _domain(r["url"]),
+            "snippet": r["content"][:MAX_SNIPPET_CHARS],
+        })
+        block += f"[{i}] {r['title']} — {r['url']}\n{r['content']}\n\n"
 
-    prompt, web_results = _build_prompt(question, web, doc_ctx)
-
-    from utils.persona_manager import get_persona_prompt
-    persona_instructions = get_persona_prompt(persona)
-    system_prompt = (
-        "You are a helpful financial research assistant. "
-        f"{persona_instructions}"
+    augmented = (
+        "Answer the user's question using the web search results below. "
+        "Cite the sources you use inline with bracketed numbers like [1], [2] "
+        "that match the numbered results. Only cite sources you actually rely "
+        "on, and do not invent sources or facts. If the results do not answer "
+        "the question, say so.\n\n"
+        f"WEB SEARCH RESULTS:\n{block}\n"
+        f"QUESTION: {user_message}"
     )
-
-    try:
-        resp = await groq_client.chat.completions.create(
-            model=SYNTHESIS_MODEL,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.3,
-            max_tokens=SYNTHESIS_MAX_TOKENS,
-        )
-        report = (resp.choices[0].message.content or "").strip()
-    except Exception as e:
-        logger.error(f"Research synthesis failed: {e}")
-        report = f"⚠️ Research synthesis failed: {e}"
-
-    return {
-        "report": report,
-        "web_sources": [{"title": r["title"], "url": r["url"]} for r in web_results],
-        "web_configured": bool(web) and "error" not in web,
-        "used_docs": bool(doc_ctx),
-        "notes": notes,
-    }
+    return augmented, sources

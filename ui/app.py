@@ -19,7 +19,6 @@ if PROJECT_ROOT not in sys.path:
 from ui.styles import inject_global_css
 from ui.sidebar import render_sidebar
 from ui.chat import render_chat_header, render_chat
-from ui.research import render_research_view
 from ui.analysis_view import render_analysis_view
 from ui.architecture import render_architecture_view
 
@@ -91,10 +90,6 @@ if page == "chat":
     # Conversation
     # -------------------------------------------------
     render_chat()
-
-elif page == "research":
-
-    render_research_view()
 
 elif page == "analysis":
 

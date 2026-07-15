@@ -22,7 +22,7 @@ from backend.services.file_processor import FileProcessor
 from backend.services.scoring_engine import ScoringEngine
 from backend.services.llm_service import llm_engine
 from backend.services.rag.rag_service import rag_service_manager
-from backend.services.research_service import deep_research
+from backend.services.research_service import web_search, build_web_prompt
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -79,6 +79,7 @@ class ChatRequest(BaseModel):
     message: str
     persona: str = "General User"
     slm_model: str = "Llama 3.1 8B Instant (Groq)"
+    web_search: bool = False
 
 class AnalysisRequest(BaseModel):
     filename: str
@@ -91,11 +92,6 @@ class RAGQueryRequest(BaseModel):
 
 class RAGReprocessRequest(BaseModel):
     session_id: str = "default"
-
-class ResearchRequest(BaseModel):
-    question: str
-    session_id: str = "default"
-    persona: str = "General User"
 
 # -------------------------------------------------
 # Endpoints
@@ -112,21 +108,43 @@ def root():
 @app.post("/chat")
 def chat_endpoint(request: ChatRequest):
     """
-    Handles chat requests using the integrated SLM.
+    Handles chat requests using the selected LLM. When web_search is enabled,
+    the message is augmented with live Tavily results and the response is
+    returned alongside the list of web sources the model was given to cite.
     """
     try:
-        logger.info(f"Chat Request: {request.message[:20]}... | Persona: {request.persona}")
-        
-        # Generate response using the LLM Engine
+        logger.info(
+            f"Chat Request: {request.message[:20]}... | Persona: {request.persona} "
+            f"| web_search={request.web_search}"
+        )
+
         llm_engine.load_model(request.slm_model)
+
+        message = request.message
+        sources = []
+        web_note = None
+
+        if request.web_search:
+            web = web_search(request.message)
+            if web is None:
+                web_note = "Web search is not configured (no TAVILY_API_KEY); answered without web sources."
+            elif "error" in web:
+                web_note = "Web search failed; answered without web sources."
+            elif web.get("results"):
+                message, sources = build_web_prompt(request.message, web["results"])
+            else:
+                web_note = "No web results found; answered without web sources."
+
         response_text = llm_engine.generate_response(
-            message=request.message,
+            message=message,
             persona=request.persona
         )
-        
+
         return {
             "response": response_text,
-            "model": request.slm_model
+            "model": request.slm_model,
+            "sources": sources,
+            "web_note": web_note,
         }
     except Exception as e:
         logger.error(f"Chat logic failed: {e}")
@@ -208,24 +226,6 @@ async def rag_reprocess_endpoint(request: RAGReprocessRequest):
         return result
     except Exception as e:
         logger.error(f"RAG reprocess failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/research")
-async def research_endpoint(request: ResearchRequest):
-    """
-    Deep research: combines live web search (Tavily) with the caller's
-    uploaded documents (session-scoped) into a single cited report.
-    """
-    try:
-        logger.info(f"Research request: {request.question[:40]}... | session {request.session_id}")
-        result = await deep_research(
-            question=request.question,
-            session_id=request.session_id,
-            persona=request.persona,
-        )
-        return result
-    except Exception as e:
-        logger.error(f"Research failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/analysis")
