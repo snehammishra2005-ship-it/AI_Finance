@@ -334,9 +334,13 @@ def render_chat():
 
                     # -------- Backend error --------
                     else:
+                        try:
+                            detail = response.json().get("detail", response.text)
+                        except Exception:
+                            detail = response.text
                         ai_response = (
-                            f"⚠️ Backend Error "
-                            f"({response.status_code}):\n\n{response.text}"
+                            f"⚠️ The model could not answer "
+                            f"({response.status_code}):\n\n{detail}"
                         )
                         active_model = slm
 

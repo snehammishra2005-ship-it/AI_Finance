@@ -3,6 +3,19 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Per-request timeout (seconds) for all synchronous provider API calls, so a
+# hung upstream can't block a request/worker indefinitely.
+REQUEST_TIMEOUT = 60
+
+
+class LLMProviderError(Exception):
+    """
+    Raised when a provider's API call fails (bad key, rate limit, timeout,
+    upstream error). Callers should surface this as a real error rather than
+    letting the failure text be mistaken for a successful answer.
+    """
+
+
 class BaseLLMProvider:
     """Base class for all LLM providers."""
     def __init__(self, model_id: str):
@@ -57,7 +70,8 @@ class OpenRouterProvider(BaseLLMProvider):
                     }
                 ],
                 temperature=0.7,
-                max_tokens=512
+                max_tokens=512,
+                timeout=REQUEST_TIMEOUT
             )
 
             content = response.choices[0].message.content
@@ -81,9 +95,7 @@ class OpenRouterProvider(BaseLLMProvider):
                 f"OpenRouter API Error: {e}"
             )
 
-            return (
-                f"OpenRouter Error: {str(e)}"
-            )
+            raise LLMProviderError(f"OpenRouter: {e}") from e
 
 # =========================================================
 # Gemini Provider
@@ -113,13 +125,16 @@ class GeminiProvider(BaseLLMProvider):
             {user_message}
             """
 
-            response = self.model.generate_content(combined_prompt)
+            response = self.model.generate_content(
+                combined_prompt,
+                request_options={"timeout": REQUEST_TIMEOUT}
+            )
 
             return response.text.strip()
 
         except Exception as e:
             logger.error(f"Gemini API Error: {e}")
-            return f"Gemini Error: {str(e)}"
+            raise LLMProviderError(f"Gemini: {e}") from e
 
 
 # =========================================================
@@ -147,14 +162,15 @@ class GroqProvider(BaseLLMProvider):
                     {"role": "user", "content": user_message}
                 ],
                 max_tokens=512,
-                temperature=0.7
+                temperature=0.7,
+                timeout=REQUEST_TIMEOUT
             )
 
             return response.choices[0].message.content.strip()
 
         except Exception as e:
             logger.error(f"Groq API Error: {e}")
-            return f"Error gathering insights from Groq: {str(e)}"
+            raise LLMProviderError(f"Groq: {e}") from e
 
 
 # =========================================================
@@ -182,12 +198,12 @@ class AnthropicProvider(BaseLLMProvider):
                 messages=[
                     {"role": "user", "content": user_message}
                 ],
-                temperature=0.7
+                temperature=0.7,
+                timeout=REQUEST_TIMEOUT
             )
 
             return response.content[0].text.strip()
 
         except Exception as e:
             logger.error(f"Anthropic API Error: {e}")
-            return f"Error gathering insights from Anthropic: {str(e)}"
-
+            raise LLMProviderError(f"Anthropic: {e}") from e

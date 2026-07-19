@@ -4,7 +4,8 @@ from backend.services.api_providers import (
     OpenRouterProvider,
     GeminiProvider,
     GroqProvider,
-    AnthropicProvider
+    AnthropicProvider,
+    LLMProviderError
 )
 
 logger = logging.getLogger(__name__)
@@ -86,13 +87,15 @@ class LLMEngine:
         Generates a response using the selected model via its API provider.
         """
         if not self.current_model_name:
-             return "Error: No model configured."
-             
+             raise LLMProviderError("No model configured.")
+
         config = next((item for item in SLM_LIST if item["name"] == self.current_model_name), self.default_model_config)
-        
+
         provider = self._get_provider_instance(config)
         if not provider:
-            return f"Error: Could not initialize provider for {self.current_model_name}. Please check API keys."
+            raise LLMProviderError(
+                f"Could not initialize provider for {self.current_model_name}. Please check API keys."
+            )
 
         from utils.persona_manager import get_persona_prompt
         persona_instructions = get_persona_prompt(persona)

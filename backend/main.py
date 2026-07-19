@@ -21,6 +21,7 @@ from config.settings import APP_NAME, APP_VERSION
 from backend.services.file_processor import FileProcessor
 from backend.services.scoring_engine import ScoringEngine
 from backend.services.llm_service import llm_engine
+from backend.services.api_providers import LLMProviderError
 from backend.services.rag.rag_service import rag_service_manager
 from backend.services.research_service import web_search, build_web_prompt
 
@@ -146,6 +147,11 @@ def chat_endpoint(request: ChatRequest):
             "sources": sources,
             "web_note": web_note,
         }
+    except LLMProviderError as e:
+        # Real upstream failure (bad key, rate limit, timeout) - surface as a
+        # 502 so the UI shows an error instead of treating it as an answer.
+        logger.error(f"LLM provider failed: {e}")
+        raise HTTPException(status_code=502, detail=str(e))
     except Exception as e:
         logger.error(f"Chat logic failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
