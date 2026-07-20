@@ -1,14 +1,13 @@
-
-version: '3.8'
-
 services:
   backend:
     build: .
-    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000
     ports:
       - "8000:8000"
     volumes:
       - .:/app
+    env_file:
+      - .env
     environment:
       - ENVIRONMENT=production
     networks:
@@ -21,6 +20,8 @@ services:
       - "8501:8501"
     volumes:
       - .:/app
+    env_file:
+      - .env
     environment:
       - BACKEND_HOST=backend
       - BACKEND_API_URL=http://backend:8000

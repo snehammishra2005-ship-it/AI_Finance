@@ -23,5 +23,6 @@ COPY . .
 EXPOSE 8000
 EXPOSE 8501
 
-# Default command (will be overridden by docker-compose)
-CMD ["python", "backend/main.py"]
+# Default command: run the FastAPI backend. docker-compose overrides this
+# per service (backend runs uvicorn, frontend runs streamlit).
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
