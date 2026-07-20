@@ -1,6 +1,9 @@
 import os
 import sys
+import time
+import subprocess
 import uuid
+import requests
 import streamlit as st
 
 # =====================================================
@@ -12,6 +15,8 @@ PROJECT_ROOT = os.path.abspath(
 
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
+
+from config.settings import BACKEND_HOST, BACKEND_PORT, BACKEND_BASE_URL, DATA_DIR
 
 # =====================================================
 # UI IMPORTS
@@ -31,6 +36,81 @@ st.set_page_config(
     layout="centered",
     initial_sidebar_state="expanded"
 )
+
+# =====================================================
+# BACKEND LIFECYCLE
+# =====================================================
+# `streamlit run ui/app.py` is the single entry point for the project: it
+# also boots the FastAPI backend as a child process so the user never has
+# to start two things separately. Skipped when BACKEND_HOST points at a
+# non-local host (e.g. Docker Compose's separate "backend" service), since
+# in that case something else is responsible for running it - we just wait
+# for it to become reachable.
+_BACKEND_LOCK_FILE = DATA_DIR / ".backend.lock"
+_IS_LOCAL_BACKEND = BACKEND_HOST in ("127.0.0.1", "localhost")
+
+
+def _backend_is_up() -> bool:
+    try:
+        requests.get(BACKEND_BASE_URL + "/", timeout=1)
+        return True
+    except requests.exceptions.RequestException:
+        return False
+
+
+def _wait_for_backend(timeout_seconds: int) -> bool:
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        if _backend_is_up():
+            return True
+        time.sleep(0.5)
+    return False
+
+
+def ensure_backend_running(timeout_seconds: int = 30) -> bool:
+    """
+    Makes sure the FastAPI backend is reachable, starting it locally if
+    needed. Guarded by an on-disk lock so multiple browser tabs/sessions
+    don't each spawn their own copy of the backend.
+    """
+    if _backend_is_up():
+        return True
+
+    if not _IS_LOCAL_BACKEND:
+        # A separate service (e.g. Docker) owns the backend lifecycle.
+        return _wait_for_backend(timeout_seconds)
+
+    try:
+        fd = os.open(_BACKEND_LOCK_FILE, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        os.close(fd)
+    except FileExistsError:
+        # Another session is already starting the backend - just wait.
+        return _wait_for_backend(timeout_seconds)
+
+    try:
+        subprocess.Popen(
+            [sys.executable, "-m", "uvicorn", "backend.main:app",
+             "--host", BACKEND_HOST, "--port", str(BACKEND_PORT)],
+            cwd=PROJECT_ROOT,
+        )
+        return _wait_for_backend(timeout_seconds)
+    finally:
+        try:
+            os.remove(_BACKEND_LOCK_FILE)
+        except OSError:
+            pass
+
+
+if "backend_ready" not in st.session_state:
+    with st.spinner("Starting backend service..."):
+        st.session_state.backend_ready = ensure_backend_running()
+
+if not st.session_state.backend_ready:
+    st.error(
+        "Backend service didn't start in time. Check the terminal running "
+        "Streamlit for errors, then reload this page."
+    )
+    st.stop()
 
 inject_global_css()
 

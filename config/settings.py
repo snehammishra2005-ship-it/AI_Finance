@@ -71,9 +71,12 @@ SCORING_WEIGHTS = {
 # -------------------------------------------------
 # Backend (FastAPI) Settings
 # -------------------------------------------------
-BACKEND_HOST = "127.0.0.1"
-BACKEND_PORT = 8000
-BACKEND_BASE_URL = f"http://{BACKEND_HOST}:{BACKEND_PORT}"
+# Overridable via env so Docker Compose can point the frontend container at
+# the separate "backend" service instead of localhost (see BACKEND_HOST /
+# BACKEND_API_URL in docker-compose.yml).
+BACKEND_HOST = os.getenv("BACKEND_HOST", "127.0.0.1")
+BACKEND_PORT = int(os.getenv("BACKEND_PORT", "8000"))
+BACKEND_BASE_URL = os.getenv("BACKEND_API_URL", f"http://{BACKEND_HOST}:{BACKEND_PORT}")
 
 # -------------------------------------------------
 # Logging
