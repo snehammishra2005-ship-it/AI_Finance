@@ -6,10 +6,23 @@ services:
       - "8000:8000"
     volumes:
       - .:/app
+      # Persist the HuggingFace cache so the embedding model
+      # (all-MiniLM-L6-v2, ~90MB) is downloaded once, not on every rebuild.
+      - hf-cache:/root/.cache/huggingface
     env_file:
       - .env
     environment:
       - ENVIRONMENT=production
+      - HF_HOME=/root/.cache/huggingface
+    healthcheck:
+      # python instead of curl: curl isn't in the python:slim base image.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/', timeout=5)"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      # Generous grace period: the first start downloads the embedding model
+      # and imports torch, which can take a couple of minutes.
+      start_period: 180s
     networks:
       - ai-finance-net
 
@@ -25,10 +38,22 @@ services:
     environment:
       - BACKEND_HOST=backend
       - BACKEND_API_URL=http://backend:8000
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8501/_stcore/health', timeout=5)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     depends_on:
-      - backend
+      backend:
+        # Wait until the backend is actually serving (not merely started), so
+        # the UI never opens onto a "backend didn't start in time" error.
+        condition: service_healthy
     networks:
       - ai-finance-net
+
+volumes:
+  hf-cache:
 
 networks:
   ai-finance-net:
