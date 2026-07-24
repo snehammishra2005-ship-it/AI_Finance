@@ -13,8 +13,20 @@ RUN apt-get update && apt-get install -y \
 # Copy requirements
 COPY requirements.txt .
 
-# Install dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install dependencies.
+#   --extra-index-url .../whl/cpu : pull the CPU-only torch build (~200MB
+#       instead of the ~2.5GB CUDA wheel). The container has no GPU and torch
+#       is only needed for CPU sentence-transformers embeddings.
+#   --timeout/--retries : the ML wheels are large; be tolerant of slow or
+#       flaky connections instead of failing the whole build.
+#   cache mount : keep pip's download cache between builds so a retry doesn't
+#       re-download gigabytes (replaces --no-cache-dir).
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install \
+      --extra-index-url https://download.pytorch.org/whl/cpu \
+      --timeout 120 \
+      --retries 10 \
+      -r requirements.txt
 
 # Copy project code
 COPY . .
