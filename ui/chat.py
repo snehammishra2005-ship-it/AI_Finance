@@ -1,10 +1,7 @@
 import streamlit as st
 import requests
 import os
-import csv
 import json
-import time
-from datetime import datetime
 
 from config.settings import BACKEND_BASE_URL
 from config.slm_config import SLM_LIST
@@ -64,80 +61,6 @@ def render_chat_header():
         json.dump({"selected_model": selected_slm}, f)
 
     st.divider()
-
-
-# -------------------------------------------------
-# SAVE TEST REPORT
-# -------------------------------------------------
-def save_test_report(
-    model_name,
-    persona,
-    prompt,
-    response,
-    response_time,
-    status="SUCCESS"
-):
-
-    report_folder = "data/test_reports"
-
-    os.makedirs(report_folder, exist_ok=True)
-
-    existing_reports = [
-        f for f in os.listdir(report_folder)
-        if f.endswith(".csv")
-    ]
-
-    serial_number = len(existing_reports) + 1
-
-    safe_model_name = (
-        model_name
-        .replace(" ", "_")
-        .replace("(", "")
-        .replace(")", "")
-        .replace(".", "")
-    )
-
-    date_str = datetime.now().strftime("%Y-%m-%d")
-
-    filename = (
-        f"test_{serial_number}_"
-        f"{safe_model_name}_"
-        f"{date_str}_report.csv"
-    )
-
-    filepath = os.path.join(
-        report_folder,
-        filename
-    )
-
-    report_data = {
-        "serial_number": serial_number,
-        "model_name": model_name,
-        "persona": persona,
-        "prompt": prompt,
-        "response_time_seconds": response_time,
-        "status": status,
-        "response_preview": str(response)[:150],
-        "timestamp": datetime.now().strftime(
-            "%Y-%m-%d %H:%M:%S"
-        )
-    }
-
-    with open(
-        filepath,
-        mode="w",
-        newline="",
-        encoding="utf-8"
-    ) as file:
-
-        writer = csv.DictWriter(
-            file,
-            fieldnames=report_data.keys()
-        )
-
-        writer.writeheader()
-
-        writer.writerow(report_data)
 
 
 # -------------------------------------------------
@@ -283,8 +206,6 @@ def render_chat():
             with st.spinner(spinner_text):
 
                 try:
-                    request_start = time.time()
-
                     # -------- Request per mode --------
                     if mode == "rag":
                         response = requests.post(
@@ -320,17 +241,6 @@ def render_chat():
                             active_model = data.get("model", slm)
                             sources = data.get("sources", []) or []
                             web_note = data.get("web_note")
-
-                        response_time = round(time.time() - request_start, 2)
-
-                        save_test_report(
-                            model_name=active_model,
-                            persona=persona if mode != "rag" else "N/A (RAG)",
-                            prompt=user_input,
-                            response=ai_response,
-                            response_time=response_time,
-                            status="SUCCESS"
-                        )
 
                     # -------- Backend error --------
                     else:
