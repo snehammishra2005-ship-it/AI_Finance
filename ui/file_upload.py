@@ -1,6 +1,7 @@
 
 import streamlit as st
 import os
+import pandas as pd
 import requests
 from config.settings import BACKEND_BASE_URL
 
@@ -93,6 +94,50 @@ def render_file_upload():
                             st.error(f"Analysis failed: {res.text}")
                     except requests.exceptions.Timeout:
                         st.error("⚠️ Analysis timed out after 120s. Try again, or pick a faster model.")
+                    except requests.exceptions.ConnectionError:
+                        st.error("⚠️ Could not connect to backend. Make sure the FastAPI server is running.")
+                    except Exception as e:
+                        st.error(f"Unexpected error: {e}")
+            else:
+                st.warning("No processed text found. Please upload a valid file.")
+
+        # 3b. Extract financial metrics
+        if st.button("📊 Extract financial metrics"):
+            if st.session_state.get("processed_text"):
+                with st.spinner("Extracting financial metrics..."):
+                    try:
+                        res = requests.post(
+                            f"{BACKEND_BASE_URL}/metrics",
+                            json={
+                                "filename": uploaded_file.name,
+                                "text_content": st.session_state.processed_text,
+                            },
+                            timeout=120
+                        )
+
+                        if res.status_code == 200:
+                            data = res.json()
+                            metrics = data.get("metrics", [])
+                            if metrics:
+                                currency = data.get("currency")
+                                st.success(
+                                    f"Found {len(metrics)} metric(s)"
+                                    + (f" · currency: {currency}" if currency else "")
+                                )
+                                df = pd.DataFrame(metrics)[["name", "value", "unit", "period"]]
+                                st.dataframe(df, use_container_width=True)
+                                st.download_button(
+                                    "⬇️ Download metrics CSV",
+                                    df.to_csv(index=False),
+                                    file_name=f"metrics_{os.path.splitext(uploaded_file.name)[0]}.csv",
+                                    mime="text/csv"
+                                )
+                            else:
+                                st.info(data.get("note") or "No financial metrics found.")
+                        else:
+                            st.error(f"Metric extraction failed: {res.text}")
+                    except requests.exceptions.Timeout:
+                        st.error("⚠️ Metric extraction timed out after 120s.")
                     except requests.exceptions.ConnectionError:
                         st.error("⚠️ Could not connect to backend. Make sure the FastAPI server is running.")
                     except Exception as e:

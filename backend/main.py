@@ -23,6 +23,7 @@ from backend.services.scoring_engine import ScoringEngine
 from backend.services.llm_service import llm_engine
 from backend.services.api_providers import LLMProviderError
 from backend.services.rag.rag_service import rag_service_manager
+from backend.services.metric_extractor import extract_financial_metrics
 from backend.services.research_service import web_search, build_web_prompt
 
 # Configure logging
@@ -86,6 +87,10 @@ class AnalysisRequest(BaseModel):
     filename: str
     text_content: str
     model_name: str = "Llama 3.1 8B Instant (Groq)"
+
+class MetricsRequest(BaseModel):
+    filename: str = "document"
+    text_content: str
 
 class RAGQueryRequest(BaseModel):
     question: str
@@ -224,6 +229,19 @@ async def file_processing_endpoint(
     except Exception as e:
         logger.error(f"File processing failed: {e}")
         raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/metrics")
+async def metrics_endpoint(request: MetricsRequest):
+    """
+    Extracts explicitly-stated financial metrics (revenue, profit, margins,
+    ratios, etc.) from a document's extracted text as structured rows.
+    """
+    try:
+        result = await extract_financial_metrics(request.text_content)
+        return result
+    except Exception as e:
+        logger.error(f"Metric extraction failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/rag/ask")
 async def rag_ask_endpoint(request: RAGQueryRequest):
