@@ -14,15 +14,27 @@ from pptx import Presentation
 # Configure logger
 logger = logging.getLogger(__name__)
 
+# Below this many characters of extracted text, a document is treated as
+# "empty" (scanned/image-only or unreadable) - triggers the OCR fallback for
+# PDFs and the low-quality warning surfaced to the user.
+MIN_MEANINGFUL_CHARS = 100
+
+# Cap OCR to this many pages so a large scanned document can't blow the
+# request timeout (OCR is ~1-3s per page).
+MAX_OCR_PAGES = 15
+
 
 class FileProcessor:
     """
     Handles extraction of text from various file formats.
-    Supported: .pdf, .docx, .pptx, .txt, .csv
+    Supported: .pdf, .docx, .pptx, .txt, .csv, .xlsx, .xls
 
     Tables are preserved as pipe-delimited rows rather than flattened into
     jumbled text - important for financial documents, where the numbers in
     balance sheets / income statements are the most valuable content.
+
+    Scanned/image PDFs (no embedded text) fall back to OCR when the tesseract
+    binary is available.
     """
 
     @staticmethod
@@ -41,6 +53,8 @@ class FileProcessor:
                 return FileProcessor._extract_from_pptx(file_bytes)
             elif ext == ".csv":
                 return FileProcessor._extract_from_csv(file_bytes)
+            elif ext in (".xlsx", ".xls"):
+                return FileProcessor._extract_from_excel(file_bytes)
             elif ext == ".txt":
                 return file_bytes.decode("utf-8", errors="ignore")
             else:
@@ -48,6 +62,12 @@ class FileProcessor:
         except Exception as e:
             logger.error(f"Error processing {filename}: {e}")
             raise e
+
+    @staticmethod
+    def looks_empty(text: str) -> bool:
+        """True if extraction produced almost no usable text (likely a scanned
+        image, an empty file, or an unreadable document)."""
+        return len(text.strip()) < MIN_MEANINGFUL_CHARS
 
     # -----------------------------------------------------------------
     # Shared helper
@@ -79,7 +99,9 @@ class FileProcessor:
             for page_num, page in enumerate(pdf.pages, 1):
                 page_text = page.extract_text()
                 if page_text:
-                    parts.append(page_text)
+                    # Page marker gives coarse provenance so retrieved chunks
+                    # can be tied back to a page.
+                    parts.append(f"--- Page {page_num} ---\n{page_text}")
 
                 # Pull tables separately and keep their structure - plain
                 # extract_text() flattens them into unreadable runs of numbers.
@@ -98,6 +120,45 @@ class FileProcessor:
                     formatted = FileProcessor._format_table(table)
                     if formatted:
                         parts.append(f"[Table - page {page_num}]\n{formatted}")
+
+        text = "\n\n".join(parts)
+
+        # Scanned/image PDF: no embedded text was found. Try OCR.
+        if FileProcessor.looks_empty(text):
+            ocr_text = FileProcessor._ocr_pdf(file_bytes)
+            if ocr_text:
+                return ocr_text
+
+        return text
+
+    @staticmethod
+    def _ocr_pdf(file_bytes: bytes) -> str:
+        """
+        OCR fallback for scanned/image PDFs. Renders each page to an image
+        (pypdfium2, via pdfplumber) and runs tesseract. Returns "" if the
+        OCR stack (pytesseract + the tesseract binary) isn't available, so
+        callers degrade gracefully instead of crashing.
+        """
+        try:
+            import pytesseract
+        except ImportError:
+            logger.warning("OCR skipped: pytesseract not installed.")
+            return ""
+
+        parts = []
+        try:
+            with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+                for page_num, page in enumerate(pdf.pages[:MAX_OCR_PAGES], 1):
+                    image = page.to_image(resolution=200).original
+                    page_text = pytesseract.image_to_string(image)
+                    if page_text and page_text.strip():
+                        parts.append(f"--- Page {page_num} (OCR) ---\n{page_text.strip()}")
+        except pytesseract.TesseractNotFoundError:
+            logger.warning("OCR skipped: tesseract binary not installed on this system.")
+            return ""
+        except Exception as e:
+            logger.warning(f"OCR failed: {e}")
+            return ""
 
         return "\n\n".join(parts)
 
@@ -133,7 +194,7 @@ class FileProcessor:
     def _extract_from_pptx(file_bytes: bytes) -> str:
         prs = Presentation(io.BytesIO(file_bytes))
         parts = []
-        for slide in prs.slides:
+        for slide_num, slide in enumerate(prs.slides, 1):
             for shape in slide.shapes:
                 # A shape can be a table, a text box, or neither (e.g. image).
                 if getattr(shape, "has_table", False):
@@ -143,7 +204,7 @@ class FileProcessor:
                     ]
                     formatted = FileProcessor._format_table(rows)
                     if formatted:
-                        parts.append(f"[Table]\n{formatted}")
+                        parts.append(f"[Table - slide {slide_num}]\n{formatted}")
                 elif hasattr(shape, "text") and shape.text.strip():
                     parts.append(shape.text)
         return "\n".join(parts)
@@ -161,3 +222,25 @@ class FileProcessor:
         reader = csv.reader(io.StringIO(text))
         rows = list(reader)
         return FileProcessor._format_table(rows)
+
+    # -----------------------------------------------------------------
+    # Excel (.xlsx / .xls)
+    # -----------------------------------------------------------------
+    @staticmethod
+    def _extract_from_excel(file_bytes: bytes) -> str:
+        """
+        Read every sheet of a workbook and render each as a pipe-delimited
+        table, labelled with the sheet name.
+        """
+        import pandas as pd
+
+        sheets = pd.read_excel(io.BytesIO(file_bytes), sheet_name=None, header=None)
+        parts = []
+        for sheet_name, df in sheets.items():
+            if df.empty:
+                continue
+            rows = df.where(df.notna(), "").astype(str).values.tolist()
+            formatted = FileProcessor._format_table(rows)
+            if formatted:
+                parts.append(f"[Sheet: {sheet_name}]\n{formatted}")
+        return "\n\n".join(parts)

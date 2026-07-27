@@ -169,6 +169,26 @@ async def file_processing_endpoint(
     try:
         content = await file.read()
         text = FileProcessor.extract_text(content, file.filename)
+
+        # Almost no text came out - likely a scanned/image PDF with no OCR
+        # available, or an empty/unreadable file. Warn instead of silently
+        # indexing near-nothing.
+        if FileProcessor.looks_empty(text):
+            warning = (
+                "Very little readable text could be extracted from this file. "
+                "It may be a scanned or image-based document (which needs OCR), "
+                "or it may be empty. It has not been indexed for document Q&A."
+            )
+            logger.warning(f"Low-quality extraction for {file.filename}: {len(text.strip())} chars")
+            return {
+                "filename": file.filename,
+                "message": warning,
+                "rag_indexed": False,
+                "extraction_warning": warning,
+                "extracted_text_preview": text[:200],
+                "full_text": text,
+            }
+
         rag_service = await rag_service_manager.get(session_id)
         rag_result = await rag_service.ingest_document(text, file_path=file.filename)
 

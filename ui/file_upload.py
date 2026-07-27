@@ -7,13 +7,13 @@ from config.settings import BACKEND_BASE_URL
 def render_file_upload():
     """
     Renders the file upload component.
-    Supported: CSV, PDF, TXT, DOCX, PPTX
+    Supported: PDF, DOCX, PPTX, XLSX/XLS, CSV, TXT
     Uploads file to backend for text extraction.
     """
 
     uploaded_file = st.file_uploader(
-        "Upload Financial File (PDF, DOCX, PPTX, CSV, TXT)",
-        type=["csv", "pdf", "txt", "docx", "pptx"]
+        "Upload Financial File (PDF, DOCX, PPTX, XLSX, CSV, TXT)",
+        type=["pdf", "docx", "pptx", "xlsx", "xls", "csv", "txt"]
     )
 
     if uploaded_file is not None:
@@ -49,7 +49,12 @@ def render_file_upload():
                         st.session_state.processed_text = data.get("full_text", "")
                         st.session_state.current_file_name = uploaded_file.name
 
-                        if data.get("rag_indexed", True):
+                        extraction_warning = data.get("extraction_warning")
+                        if extraction_warning:
+                            # Very little text came out (e.g. a scanned/image PDF
+                            # with no OCR available, or an empty file).
+                            st.warning(extraction_warning)
+                        elif data.get("rag_indexed", True):
                             st.success(f"File processed! Text length: {len(st.session_state.processed_text)} chars")
                         else:
                             st.warning(data.get("message", "RAG indexing failed for this document."))
