@@ -65,9 +65,25 @@ class FileProcessor:
 
     @staticmethod
     def looks_empty(text: str) -> bool:
-        """True if extraction produced almost no usable text (likely a scanned
-        image, an empty file, or an unreadable document)."""
+        """True if extraction produced almost no text. Used internally to
+        decide whether a PDF needs the OCR fallback."""
         return len(text.strip()) < MIN_MEANINGFUL_CHARS
+
+    @staticmethod
+    def extraction_insufficient(text: str, filename: str) -> bool:
+        """
+        True when a file couldn't be usefully read (warn + skip indexing).
+
+        Only PDFs get the "scanned image" threshold - a thin PDF, even after
+        the OCR fallback, likely couldn't be read. For text/CSV/Excel/Word/
+        PPTX the user supplied the content directly, so any non-empty
+        extraction is valid (a short one-line note must not be rejected).
+        """
+        stripped = text.strip()
+        ext = os.path.splitext(filename)[1].lower()
+        if ext == ".pdf":
+            return len(stripped) < MIN_MEANINGFUL_CHARS
+        return len(stripped) == 0
 
     # -----------------------------------------------------------------
     # Shared helper

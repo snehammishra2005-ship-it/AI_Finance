@@ -175,14 +175,14 @@ async def file_processing_endpoint(
         content = await file.read()
         text = FileProcessor.extract_text(content, file.filename)
 
-        # Almost no text came out - likely a scanned/image PDF with no OCR
-        # available, or an empty/unreadable file. Warn instead of silently
-        # indexing near-nothing.
-        if FileProcessor.looks_empty(text):
+        # Couldn't usefully read the file - a scanned/image PDF that OCR
+        # couldn't handle, or a genuinely empty file. (Short but real text/
+        # CSV/Word uploads are NOT rejected - see extraction_insufficient.)
+        if FileProcessor.extraction_insufficient(text, file.filename):
             warning = (
-                "Very little readable text could be extracted from this file. "
-                "It may be a scanned or image-based document (which needs OCR), "
-                "or it may be empty. It has not been indexed for document Q&A."
+                "No readable text could be extracted from this file. It may be "
+                "empty, or a scanned/image-based document that needs OCR. It has "
+                "not been indexed for document Q&A."
             )
             logger.warning(f"Low-quality extraction for {file.filename}: {len(text.strip())} chars")
             return {
