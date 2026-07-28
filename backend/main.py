@@ -198,7 +198,12 @@ async def file_processing_endpoint(
         rag_result = await rag_service.ingest_document(text, file_path=file.filename)
 
         if rag_result["indexed"]:
-            message = "File processed successfully"
+            if rag_result.get("duplicate"):
+                message = "This document's content is already indexed in your session and is searchable."
+            elif rag_result.get("replaced"):
+                message = "File processed successfully (replaced the previous version of this file)."
+            else:
+                message = "File processed successfully"
         else:
             error_text = rag_result["error"] or ""
             is_rate_limit = "rate_limit" in error_text.lower() or "429" in error_text

@@ -78,6 +78,35 @@ class RAGService:
 
             logger.info(f"LightRAG initialized at {self.rag.working_dir}")
 
+    async def _delete_docs_by_filename(self, file_path: str) -> int:
+        """
+        Delete any already-ingested document(s) with this filename. Called
+        before a re-upload so an updated document REPLACES the old version -
+        otherwise LightRAG rejects the re-upload as a duplicate and keeps
+        serving the stale content. Returns how many docs were removed.
+        """
+        doc_ids = set()
+        for status in DocStatus:
+            try:
+                docs = await self.rag.get_docs_by_status(status)
+            except Exception:
+                continue
+            for doc_id, st in docs.items():
+                if getattr(st, "file_path", None) == file_path:
+                    doc_ids.add(doc_id)
+
+        removed = 0
+        for doc_id in doc_ids:
+            try:
+                await self.rag.adelete_by_doc_id(doc_id)
+                removed += 1
+            except Exception as e:
+                logger.warning(f"Failed to delete old doc {doc_id} for {file_path}: {e}")
+
+        if removed:
+            logger.info(f"Replaced {removed} existing doc(s) for filename '{file_path}'")
+        return removed
+
     async def ingest_document(self, text: str, file_path: str | None = None) -> dict:
         """
         Ingests a document and reports whether LightRAG's own processing
@@ -85,27 +114,47 @@ class RAGService:
         actually succeeded, rather than assuming success just because
         ainsert() returned without raising.
 
-        file_path is passed through to LightRAG as citation metadata -
-        without it, citations fall back to a generic placeholder title
-        instead of the real filename.
+        file_path is passed through to LightRAG as citation metadata (and
+        used to replace an earlier version of the same file - see below).
+
+        Returns {"indexed": bool, "error": str|None, "replaced": int,
+                 "duplicate": bool}.
         """
 
         await self.initialize()
+
+        # Re-uploading a file with the same name should REPLACE the previous
+        # version (e.g. a restated financial report), not be silently dropped
+        # as a duplicate. Remove any existing doc for this filename first.
+        replaced = 0
+        if file_path:
+            replaced = await self._delete_docs_by_filename(file_path)
 
         track_id = await self.rag.ainsert(text, file_paths=file_path)
 
         statuses = await self.rag.aget_docs_by_track_id(track_id)
 
-        failed_errors = [
-            doc_status.error_msg or "Unknown error during RAG indexing"
-            for doc_status in statuses.values()
-            if doc_status.status == DocStatus.FAILED
-        ]
+        failed_errors = []
+        duplicate = False
+        for doc_status in statuses.values():
+            if doc_status.status != DocStatus.FAILED:
+                continue
+            error_msg = doc_status.error_msg or ""
+            metadata = getattr(doc_status, "metadata", {}) or {}
+            # A content-hash duplicate (identical text already present, e.g.
+            # under a different filename) isn't a real failure - the content
+            # is already searchable.
+            if metadata.get("is_duplicate") or "already exists" in error_msg.lower():
+                duplicate = True
+            else:
+                failed_errors.append(error_msg or "Unknown error during RAG indexing")
 
         if failed_errors:
-            return {"indexed": False, "error": "; ".join(failed_errors)}
+            return {"indexed": False, "error": "; ".join(failed_errors),
+                    "replaced": replaced, "duplicate": False}
 
-        return {"indexed": True, "error": None}
+        return {"indexed": True, "error": None,
+                "replaced": replaced, "duplicate": duplicate}
 
     async def reprocess_failed_documents(self) -> dict:
         """
