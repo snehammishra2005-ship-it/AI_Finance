@@ -9,9 +9,14 @@ This backend handles:
 
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
 import logging
+
+# Cap upload size so a single large file can't exhaust memory - there is no
+# auth in front of this endpoint. read() is bounded to this many bytes below.
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 MB
 
 # Load environment variables from .env
 from dotenv import load_dotenv
@@ -187,8 +192,19 @@ async def file_processing_endpoint(
     documents aren't visible to other sessions.
     """
     try:
-        content = await file.read()
-        text = FileProcessor.extract_text(content, file.filename)
+        # Read at most MAX_UPLOAD_BYTES+1 so an oversized upload can't OOM the
+        # backend; read(size) bounds how much is pulled into memory.
+        content = await file.read(MAX_UPLOAD_BYTES + 1)
+        if len(content) > MAX_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File exceeds the {MAX_UPLOAD_BYTES // (1024 * 1024)} MB upload limit.",
+            )
+
+        # Text extraction (pdfplumber parsing, OCR) is synchronous and
+        # CPU-heavy; run it in a threadpool so a large or scanned PDF doesn't
+        # block the event loop and freeze chat/RAG for every other request.
+        text = await run_in_threadpool(FileProcessor.extract_text, content, file.filename)
 
         # Couldn't usefully read the file - a scanned/image PDF that OCR
         # couldn't handle, or a genuinely empty file. (Short but real text/
@@ -246,6 +262,10 @@ async def file_processing_endpoint(
             "extracted_text_preview": text[:200],
             "full_text": text
         }
+    except HTTPException:
+        # Deliberate responses (e.g. 413 too-large) must pass through, not be
+        # rewritten into a generic 400 below.
+        raise
     except Exception as e:
         logger.error(f"File processing failed: {e}")
         raise HTTPException(status_code=400, detail=str(e))
