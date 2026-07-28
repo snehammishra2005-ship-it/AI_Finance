@@ -23,6 +23,18 @@ MIN_MEANINGFUL_CHARS = 100
 # request timeout (OCR is ~1-3s per page).
 MAX_OCR_PAGES = 15
 
+# Cap how many rows of a CSV/Excel sheet are turned into text. A huge
+# spreadsheet would otherwise become one enormous blob -> far too many RAG
+# chunks -> Groq rate-limit/timeout during indexing. Truncation is flagged
+# inline so it's visible rather than silent.
+MAX_TABLE_ROWS = 500
+
+# Encodings tried, in order, for text-like uploads (.txt, .csv). Financial
+# exports from Excel are frequently cp1252/latin-1 (currency symbols,
+# non-breaking spaces); latin-1 maps all 256 byte values so it never raises
+# and acts as the final catch-all before a lossy decode.
+_TEXT_ENCODINGS = ("utf-8-sig", "cp1252", "latin-1")
+
 
 class FileProcessor:
     """
@@ -56,12 +68,27 @@ class FileProcessor:
             elif ext in (".xlsx", ".xls"):
                 return FileProcessor._extract_from_excel(file_bytes)
             elif ext == ".txt":
-                return file_bytes.decode("utf-8", errors="ignore")
+                return FileProcessor._decode_text(file_bytes)
             else:
                 raise ValueError(f"Unsupported file type: {ext}")
         except Exception as e:
             logger.error(f"Error processing {filename}: {e}")
             raise e
+
+    @staticmethod
+    def _decode_text(file_bytes: bytes) -> str:
+        """
+        Decode text-like bytes, trying UTF-8 first and falling back to the
+        common Windows/Latin encodings so non-ASCII characters in finance
+        exports (£, €, non-breaking spaces) aren't silently dropped.
+        """
+        for enc in _TEXT_ENCODINGS:
+            try:
+                return file_bytes.decode(enc)
+            except UnicodeDecodeError:
+                continue
+        # Should be unreachable (latin-1 never raises), but stay safe.
+        return file_bytes.decode("utf-8", errors="ignore")
 
     @staticmethod
     def looks_empty(text: str) -> bool:
@@ -113,15 +140,35 @@ class FileProcessor:
         parts = []
         with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
             for page_num, page in enumerate(pdf.pages, 1):
-                page_text = page.extract_text()
-                if page_text:
+                # Locate tables once so we can both (a) exclude their region
+                # from the flat text pass and (b) render them structured.
+                tables = page.find_tables()
+                bboxes = [t.bbox for t in tables]
+
+                # Flat text with the table regions removed. Without this,
+                # extract_text() ALSO flattens the numbers inside each table,
+                # so every table value would appear twice (once here, once in
+                # the formatted table) - inflating tokens and skewing metric
+                # extraction with double-counted figures.
+                def _outside_tables(obj):
+                    for bx0, btop, bx1, bbottom in bboxes:
+                        if (obj["x0"] >= bx0 and obj["x1"] <= bx1
+                                and obj["top"] >= btop and obj["bottom"] <= bbottom):
+                            return False
+                    return True
+
+                page_text = (
+                    page.filter(_outside_tables).extract_text()
+                    if bboxes else page.extract_text()
+                )
+                if page_text and page_text.strip():
                     # Page marker gives coarse provenance so retrieved chunks
                     # can be tied back to a page.
                     parts.append(f"--- Page {page_num} ---\n{page_text}")
 
-                # Pull tables separately and keep their structure - plain
-                # extract_text() flattens them into unreadable runs of numbers.
-                for table in page.extract_tables() or []:
+                # Render each detected table with its structure preserved.
+                for t in tables:
+                    table = t.extract()
                     # pdfplumber over-detects: chart axes / stray gridlines come
                     # back as tiny 1-cell "tables". Keep only genuine data tables
                     # (>= 2 non-empty rows and >= 2 columns).
@@ -232,12 +279,17 @@ class FileProcessor:
     def _extract_from_csv(file_bytes: bytes) -> str:
         """
         Parse CSV with the csv module (handles quoted fields/commas correctly)
-        and render it as a pipe-delimited table.
+        and render it as a pipe-delimited table, capped at MAX_TABLE_ROWS.
         """
-        text = file_bytes.decode("utf-8-sig", errors="ignore")
+        text = FileProcessor._decode_text(file_bytes)
         reader = csv.reader(io.StringIO(text))
         rows = list(reader)
-        return FileProcessor._format_table(rows)
+
+        truncated = len(rows) > MAX_TABLE_ROWS
+        formatted = FileProcessor._format_table(rows[:MAX_TABLE_ROWS])
+        if truncated:
+            formatted += f"\n[... truncated to the first {MAX_TABLE_ROWS} rows ...]"
+        return formatted
 
     # -----------------------------------------------------------------
     # Excel (.xlsx / .xls)
@@ -256,7 +308,11 @@ class FileProcessor:
             if df.empty:
                 continue
             rows = df.where(df.notna(), "").astype(str).values.tolist()
-            formatted = FileProcessor._format_table(rows)
+
+            truncated = len(rows) > MAX_TABLE_ROWS
+            formatted = FileProcessor._format_table(rows[:MAX_TABLE_ROWS])
             if formatted:
+                if truncated:
+                    formatted += f"\n[... truncated to the first {MAX_TABLE_ROWS} rows ...]"
                 parts.append(f"[Sheet: {sheet_name}]\n{formatted}")
         return "\n\n".join(parts)
