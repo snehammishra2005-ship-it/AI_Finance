@@ -24,7 +24,11 @@ from backend.services.llm_service import llm_engine
 from backend.services.api_providers import LLMProviderError
 from backend.services.rag.rag_service import rag_service_manager
 from backend.services.metric_extractor import extract_financial_metrics
-from backend.services.research_service import web_search, build_web_prompt
+from backend.services.research_service import (
+    web_search,
+    build_web_prompt,
+    strip_invalid_citations,
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -129,6 +133,11 @@ def chat_endpoint(request: ChatRequest):
         web_note = None
 
         if request.web_search:
+            # Fail fast before spending a web-search call if the selected
+            # model can't even be initialized (e.g. missing key), so we don't
+            # burn a Tavily credit on a request that can't be answered anyway.
+            llm_engine.ensure_provider(request.slm_model)
+
             web = web_search(request.message)
             if web is None:
                 web_note = "Web search is not configured (no TAVILY_API_KEY); answered without web sources."
@@ -146,6 +155,11 @@ def chat_endpoint(request: ChatRequest):
             persona=request.persona,
             model_name=request.slm_model,
         )
+
+        # Drop any [n] citations the model emitted that point past the sources
+        # we actually returned, so the UI never shows a dangling reference.
+        if sources:
+            response_text = strip_invalid_citations(response_text, len(sources))
 
         return {
             "response": response_text,

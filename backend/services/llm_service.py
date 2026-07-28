@@ -95,6 +95,27 @@ class LLMEngine:
         if config:
             self._get_provider_instance(config)
 
+    def ensure_provider(self, model_name: str = None):
+        """
+        Resolve and initialize the provider for model_name, raising
+        LLMProviderError if it can't be created. Lets callers fail fast -
+        e.g. before spending a paid web-search call - when the selected model
+        isn't usable at all (unknown provider or a missing API key). Note this
+        only catches setup failures; a bad-key/quota error the provider's API
+        returns at call time still surfaces later from generate_response.
+        """
+        config = self._resolve_config(model_name)
+        if not config:
+            raise LLMProviderError("No model configured.")
+
+        provider = self._get_provider_instance(config)
+        if not provider:
+            raise LLMProviderError(
+                f"Could not initialize provider for {config.get('name')}. "
+                "Please check API keys."
+            )
+        return provider
+
     def generate_response(
         self,
         message: str,
@@ -108,16 +129,7 @@ class LLMEngine:
         from any shared self.current_model_name), so concurrent requests
         selecting different models can't clobber each other's routing.
         """
-        config = self._resolve_config(model_name)
-        if not config:
-            raise LLMProviderError("No model configured.")
-
-        provider = self._get_provider_instance(config)
-        if not provider:
-            raise LLMProviderError(
-                f"Could not initialize provider for {config.get('name')}. "
-                "Please check API keys."
-            )
+        provider = self.ensure_provider(model_name)
 
         from utils.persona_manager import get_persona_prompt
         persona_instructions = get_persona_prompt(persona)
