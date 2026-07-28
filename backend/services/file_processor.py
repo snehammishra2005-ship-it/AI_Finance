@@ -5,6 +5,8 @@ import csv
 import logging
 
 import pdfplumber
+from pdfplumber.utils.exceptions import PdfminerException
+from pdfminer.pdfdocument import PDFPasswordIncorrect
 import docx
 from docx.table import Table
 from docx.text.paragraph import Paragraph
@@ -29,6 +31,12 @@ MAX_OCR_PAGES = 15
 # inline so it's visible rather than silent.
 MAX_TABLE_ROWS = 500
 
+# Global ceiling on extracted text across ALL formats (~50k tokens). The row
+# cap only bounds spreadsheets; a long PDF or Word report can still blow past
+# what the free Groq tier can index in one request. Applied centrally in
+# extract_text so every path is protected, with the truncation flagged inline.
+MAX_EXTRACTED_CHARS = 200_000
+
 # Encodings tried, in order, for text-like uploads (.txt, .csv). Financial
 # exports from Excel are frequently cp1252/latin-1 (currency symbols,
 # non-breaking spaces); latin-1 maps all 256 byte values so it never raises
@@ -52,28 +60,83 @@ class FileProcessor:
     @staticmethod
     def extract_text(file_bytes: bytes, filename: str) -> str:
         """
-        Detects file type based on extension and extracts text.
+        Extracts text, choosing the parser from the file's actual content
+        (magic bytes) and only falling back to the extension. This way a
+        mislabeled upload - a PDF saved as .txt, an .xlsx renamed .csv -
+        is still read correctly. Output is capped at MAX_EXTRACTED_CHARS.
         """
-        ext = os.path.splitext(filename)[1].lower()
+        ext = FileProcessor._detect_ext(file_bytes, filename)
 
         try:
             if ext == ".pdf":
-                return FileProcessor._extract_from_pdf(file_bytes)
+                text = FileProcessor._extract_from_pdf(file_bytes)
             elif ext == ".docx":
-                return FileProcessor._extract_from_docx(file_bytes)
+                text = FileProcessor._extract_from_docx(file_bytes)
             elif ext == ".pptx":
-                return FileProcessor._extract_from_pptx(file_bytes)
+                text = FileProcessor._extract_from_pptx(file_bytes)
             elif ext == ".csv":
-                return FileProcessor._extract_from_csv(file_bytes)
+                text = FileProcessor._extract_from_csv(file_bytes)
             elif ext in (".xlsx", ".xls"):
-                return FileProcessor._extract_from_excel(file_bytes)
+                text = FileProcessor._extract_from_excel(file_bytes)
             elif ext == ".txt":
-                return FileProcessor._decode_text(file_bytes)
+                text = FileProcessor._decode_text(file_bytes)
             else:
                 raise ValueError(f"Unsupported file type: {ext}")
         except Exception as e:
             logger.error(f"Error processing {filename}: {e}")
             raise e
+
+        return FileProcessor._cap_text(text)
+
+    @staticmethod
+    def _detect_ext(file_bytes: bytes, filename: str) -> str:
+        """
+        Determine the real file type from its content signature, falling back
+        to the filename extension when content is ambiguous (e.g. plain text,
+        where .txt vs .csv can't be told apart from bytes).
+        """
+        declared = os.path.splitext(filename)[1].lower()
+        sig = file_bytes[:8]
+
+        if sig[:4] == b"%PDF":
+            return ".pdf"
+        # OLE2 compound file - legacy Office; .xls is the only one we support.
+        if sig == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1":
+            return ".xls"
+        # OOXML/zip container: peek inside to tell docx/xlsx/pptx apart.
+        if sig[:4] == b"PK\x03\x04":
+            return FileProcessor._detect_ooxml(file_bytes) or declared
+
+        return declared
+
+    @staticmethod
+    def _detect_ooxml(file_bytes: bytes) -> str | None:
+        """Identify a zip-based Office file by the parts it contains."""
+        import zipfile
+        try:
+            with zipfile.ZipFile(io.BytesIO(file_bytes)) as z:
+                names = z.namelist()
+        except zipfile.BadZipFile:
+            return None
+        if any(n.startswith("word/") for n in names):
+            return ".docx"
+        if any(n.startswith("xl/") for n in names):
+            return ".xlsx"
+        if any(n.startswith("ppt/") for n in names):
+            return ".pptx"
+        return None
+
+    @staticmethod
+    def _cap_text(text: str) -> str:
+        """Bound total extracted text so a very large document can't overwhelm
+        RAG indexing; flags the truncation inline rather than silently."""
+        if text and len(text) > MAX_EXTRACTED_CHARS:
+            return (
+                text[:MAX_EXTRACTED_CHARS]
+                + f"\n\n[... document truncated to the first "
+                f"{MAX_EXTRACTED_CHARS} characters ...]"
+            )
+        return text
 
     @staticmethod
     def _decode_text(file_bytes: bytes) -> str:
@@ -138,7 +201,21 @@ class FileProcessor:
     @staticmethod
     def _extract_from_pdf(file_bytes: bytes) -> str:
         parts = []
-        with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+        try:
+            pdf = pdfplumber.open(io.BytesIO(file_bytes))
+        except (PDFPasswordIncorrect, PdfminerException) as e:
+            # pdfplumber wraps pdfminer errors in PdfminerException, so a
+            # password failure can arrive either directly or as the wrapped
+            # __context__. Map only that case to a clear message; let other
+            # parse failures (corrupt PDF, etc.) propagate unchanged.
+            cause = e if isinstance(e, PDFPasswordIncorrect) else e.__context__
+            if isinstance(cause, PDFPasswordIncorrect):
+                raise ValueError(
+                    "This PDF is password-protected. Please remove the password "
+                    "and upload it again."
+                )
+            raise
+        with pdf:
             for page_num, page in enumerate(pdf.pages, 1):
                 # Locate tables once so we can both (a) exclude their region
                 # from the flat text pass and (b) render them structured.
