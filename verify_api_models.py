@@ -9,11 +9,10 @@ for model in SLM_LIST:
     print(f"\nTesting: {model['name']}")
 
     try:
-        llm_engine.load_model(model["name"])
-
         response = llm_engine.generate_response(
             "What is inflation?",
-            persona="Student"
+            persona="Student",
+            model_name=model["name"],
         )
 
         print("SUCCESS")

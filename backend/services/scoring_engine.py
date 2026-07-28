@@ -43,9 +43,6 @@ class ScoringEngine:
         Analyzes the text content and generates a scored CSV report.
         """
 
-        # Ensure the engine routes to the requested model.
-        llm_engine.load_model(model_name)
-
         # Cap the snippet so the grading prompt stays bounded.
         snippet = text_content[:3000]
 
@@ -64,7 +61,7 @@ class ScoringEngine:
 
         scores = None
         try:
-            raw = llm_engine.generate_response(prompt, persona="General User")
+            raw = llm_engine.generate_response(prompt, persona="General User", model_name=model_name)
             scores = ScoringEngine._parse_scores(raw)
         except Exception as e:
             logger.error(f"Scoring LLM call failed for {filename}: {e}")

@@ -61,7 +61,8 @@ def test_slm():
 
     response = llm_engine.generate_response(
         message=PROMPT,
-        persona=PERSONA
+        persona=PERSONA,
+        model_name=MODEL_NAME,
     )
 
     response_time = round(

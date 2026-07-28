@@ -124,8 +124,6 @@ def chat_endpoint(request: ChatRequest):
             f"| web_search={request.web_search}"
         )
 
-        llm_engine.load_model(request.slm_model)
-
         message = request.message
         sources = []
         web_note = None
@@ -141,9 +139,12 @@ def chat_endpoint(request: ChatRequest):
             else:
                 web_note = "No web results found; answered without web sources."
 
+        # Pass the selected model straight through so concurrent requests
+        # with different models can't race on shared engine state.
         response_text = llm_engine.generate_response(
             message=message,
-            persona=request.persona
+            persona=request.persona,
+            model_name=request.slm_model,
         )
 
         return {
@@ -302,10 +303,6 @@ def analysis_endpoint(request: AnalysisRequest):
     Triggers the scoring engine to generate analysis CSV.
     """
     try:
-        # Ensure the engine is actually using the model the user selected,
-        # not whichever model was last active from a prior /chat request.
-        llm_engine.load_model(request.model_name)
-
         csv_file = ScoringEngine.analyze_and_score(
             request.filename,
             request.text_content,
