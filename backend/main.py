@@ -250,9 +250,26 @@ async def rag_ask_endpoint(request: RAGQueryRequest):
     only (see session_id) - not the global set of every uploaded document.
     """
     try:
+        # No documents yet: answer directly, and don't initialize a store
+        # (which would leave an empty session directory on disk).
+        if not rag_service_manager.session_has_documents(request.session_id):
+            return {
+                "answer": "You haven't uploaded any documents in this session yet. "
+                          "Upload a document first, then ask about it."
+            }
+
         rag_service = await rag_service_manager.get(request.session_id)
         answer = await rag_service.ask(request.question)
+
+        # Replace LightRAG's internal "[no-context]" sentinel with a clean
+        # message so the raw marker never reaches the user.
+        if answer and "[no-context]" in answer.lower():
+            answer = ("I couldn't find anything relevant to that question in your "
+                      "uploaded documents.")
+
         return {"answer": answer}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"RAG query failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -268,6 +285,8 @@ async def rag_reprocess_endpoint(request: RAGReprocessRequest):
         rag_service = await rag_service_manager.get(request.session_id)
         result = await rag_service.reprocess_failed_documents()
         return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"RAG reprocess failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))

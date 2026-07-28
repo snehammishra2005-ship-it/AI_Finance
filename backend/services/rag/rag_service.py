@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import time
 import shutil
 import logging
@@ -168,10 +169,39 @@ class RAGServiceManager:
     def __init__(self):
         self._services: "OrderedDict[str, RAGService]" = OrderedDict()
 
-    async def get(self, session_id: str) -> RAGService:
-
+    @staticmethod
+    def _validate(session_id: str) -> None:
         if not session_id or not _SAFE_SESSION_ID.match(session_id):
             raise ValueError(f"Invalid session_id: {session_id!r}")
+
+    def session_has_documents(self, session_id: str) -> bool:
+        """
+        True if this session has at least one ingested document, decided by
+        reading the on-disk doc-status store directly. Deliberately does NOT
+        create or initialize a LightRAG instance, so merely *querying* an
+        empty session no longer leaves a persistent empty directory behind.
+        """
+        self._validate(session_id)
+
+        session_dir = os.path.join(RAG_SESSIONS_DIR, session_id)
+        if not os.path.isdir(session_dir):
+            return False
+
+        for root, _, files in os.walk(session_dir):
+            if "kv_store_doc_status.json" in files:
+                try:
+                    with open(os.path.join(root, "kv_store_doc_status.json"),
+                              encoding="utf-8") as f:
+                        data = json.load(f)
+                    if any(isinstance(v, dict) and v.get("status") for v in data.values()):
+                        return True
+                except Exception:
+                    continue
+        return False
+
+    async def get(self, session_id: str) -> RAGService:
+
+        self._validate(session_id)
 
         svc = self._services.get(session_id)
         if svc is not None:
