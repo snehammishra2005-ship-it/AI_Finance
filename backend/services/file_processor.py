@@ -8,6 +8,7 @@ import pdfplumber
 from pdfplumber.utils.exceptions import PdfminerException
 from pdfminer.pdfdocument import PDFPasswordIncorrect
 import docx
+from docx.document import Document as _DocxDocument
 from docx.table import Table
 from docx.text.paragraph import Paragraph
 from docx.oxml.ns import qn
@@ -43,18 +44,22 @@ MAX_EXTRACTED_CHARS = 200_000
 # and acts as the final catch-all before a lossy decode.
 _TEXT_ENCODINGS = ("utf-8-sig", "cp1252", "latin-1")
 
+# Image formats read via OCR (a photo/scan of a statement or receipt).
+IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".tiff", ".tif", ".bmp", ".webp", ".gif")
+
 
 class FileProcessor:
     """
     Handles extraction of text from various file formats.
-    Supported: .pdf, .docx, .pptx, .txt, .csv, .xlsx, .xls
+    Supported: .pdf, .docx, .pptx, .txt, .csv, .xlsx, .xls, and images
+    (.png/.jpg/.jpeg/.tiff/.bmp/.webp/.gif via OCR).
 
     Tables are preserved as pipe-delimited rows rather than flattened into
     jumbled text - important for financial documents, where the numbers in
     balance sheets / income statements are the most valuable content.
 
-    Scanned/image PDFs (no embedded text) fall back to OCR when the tesseract
-    binary is available.
+    Scanned/image PDFs (no embedded text) and image uploads fall back to OCR
+    when the tesseract binary is available.
     """
 
     @staticmethod
@@ -80,6 +85,8 @@ class FileProcessor:
                 text = FileProcessor._extract_from_excel(file_bytes)
             elif ext == ".txt":
                 text = FileProcessor._decode_text(file_bytes)
+            elif ext in IMAGE_EXTS:
+                text = FileProcessor._extract_from_image(file_bytes)
             else:
                 raise ValueError(f"Unsupported file type: {ext}")
         except Exception as e:
@@ -106,6 +113,20 @@ class FileProcessor:
         # OOXML/zip container: peek inside to tell docx/xlsx/pptx apart.
         if sig[:4] == b"PK\x03\x04":
             return FileProcessor._detect_ooxml(file_bytes) or declared
+
+        # Images (OCR path).
+        if sig[:4] == b"\x89PNG":
+            return ".png"
+        if sig[:3] == b"\xff\xd8\xff":
+            return ".jpg"
+        if sig[:2] == b"BM":
+            return ".bmp"
+        if sig[:4] in (b"II*\x00", b"MM\x00*"):
+            return ".tiff"
+        if sig[:4] == b"GIF8":
+            return ".gif"
+        if sig[:4] == b"RIFF" and file_bytes[8:12] == b"WEBP":
+            return ".webp"
 
         return declared
 
@@ -310,22 +331,108 @@ class FileProcessor:
         doc = docx.Document(io.BytesIO(file_bytes))
         parts = []
 
-        # Iterate paragraphs AND tables in document order. doc.paragraphs
-        # alone silently drops every table, so financial tables in Word docs
-        # would otherwise be lost entirely.
-        for child in doc.element.body.iterchildren():
+        # Headers / footers first - financial Word docs often park totals,
+        # report dates, and disclaimers here, and doc.paragraphs never sees
+        # them. Linked headers/footers inherit and yield nothing, so there's
+        # no duplication across sections.
+        for section in doc.sections:
+            for container in (
+                section.first_page_header, section.header, section.even_page_header,
+                section.first_page_footer, section.footer, section.even_page_footer,
+            ):
+                FileProcessor._docx_render_container(container, parts)
+
+        # Main body, in order, recursing into nested tables.
+        FileProcessor._docx_render_container(doc, parts)
+
+        # Text boxes (DrawingML/VML) aren't reachable from the block tree.
+        textbox_text = FileProcessor._docx_textboxes(doc)
+        if textbox_text:
+            parts.append(f"[Text box]\n{textbox_text}")
+
+        return "\n".join(p for p in parts if p)
+
+    @staticmethod
+    def _iter_block_items(container):
+        """Yield Paragraphs and Tables in document order from a Document,
+        header/footer, or table cell (python-docx exposes .paragraphs and
+        .tables separately, losing their interleaved order)."""
+        elm = container.element.body if isinstance(container, _DocxDocument) else container._element
+        for child in elm.iterchildren():
             if child.tag == qn("w:p"):
-                para = Paragraph(child, doc)
-                if para.text.strip():
-                    parts.append(para.text)
+                yield Paragraph(child, container)
             elif child.tag == qn("w:tbl"):
-                table = Table(child, doc)
-                rows = [[cell.text for cell in row.cells] for row in table.rows]
+                yield Table(child, container)
+
+    @staticmethod
+    def _docx_render_container(container, parts, depth=0):
+        """Append a container's paragraphs and tables (recursing into nested
+        tables) to parts, in order."""
+        for block in FileProcessor._iter_block_items(container):
+            if isinstance(block, Paragraph):
+                if block.text.strip():
+                    parts.append(block.text)
+            else:  # Table
+                rows = [[cell.text for cell in row.cells] for row in block.rows]
                 formatted = FileProcessor._format_table(rows)
                 if formatted:
-                    parts.append(f"[Table]\n{formatted}")
+                    label = "Nested table" if depth else "Table"
+                    parts.append(f"[{label}]\n{formatted}")
+                # A cell may itself hold tables; render those too.
+                for row in block.rows:
+                    for cell in row.cells:
+                        for nested in cell.tables:
+                            FileProcessor._docx_render_container_table(nested, parts, depth + 1)
 
-        return "\n".join(parts)
+    @staticmethod
+    def _docx_render_container_table(table, parts, depth):
+        rows = [[cell.text for cell in row.cells] for row in table.rows]
+        formatted = FileProcessor._format_table(rows)
+        if formatted:
+            parts.append(f"[Nested table]\n{formatted}")
+        for row in table.rows:
+            for cell in row.cells:
+                for nested in cell.tables:
+                    FileProcessor._docx_render_container_table(nested, parts, depth + 1)
+
+    @staticmethod
+    def _docx_textboxes(doc) -> str:
+        """Collect text from DrawingML/VML text boxes, which live inside a
+        run's drawing and so are skipped by paragraph/table iteration."""
+        texts = []
+        for txbx in doc.element.body.iter(qn("w:txbxContent")):
+            words = [node.text for node in txbx.iter(qn("w:t")) if node.text]
+            joined = "".join(words).strip()
+            if joined:
+                texts.append(joined)
+        return "\n".join(texts)
+
+    # -----------------------------------------------------------------
+    # Images (OCR)
+    # -----------------------------------------------------------------
+    @staticmethod
+    def _extract_from_image(file_bytes: bytes) -> str:
+        """
+        OCR an uploaded image (a photo/scan of a statement or receipt).
+        Returns "" if the OCR stack (pytesseract + Pillow + the tesseract
+        binary) isn't available, so callers degrade gracefully.
+        """
+        try:
+            import pytesseract
+            from PIL import Image
+        except ImportError:
+            logger.warning("Image OCR skipped: pytesseract/Pillow not installed.")
+            return ""
+
+        try:
+            image = Image.open(io.BytesIO(file_bytes))
+            return pytesseract.image_to_string(image).strip()
+        except pytesseract.TesseractNotFoundError:
+            logger.warning("Image OCR skipped: tesseract binary not installed on this system.")
+            return ""
+        except Exception as e:
+            logger.warning(f"Image OCR failed: {e}")
+            return ""
 
     # -----------------------------------------------------------------
     # PPTX

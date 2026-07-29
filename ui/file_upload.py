@@ -13,8 +13,11 @@ def render_file_upload():
     """
 
     uploaded_file = st.file_uploader(
-        "Upload Financial File (PDF, DOCX, PPTX, XLSX, CSV, TXT)",
-        type=["pdf", "docx", "pptx", "xlsx", "xls", "csv", "txt"]
+        "Upload Financial File (PDF, DOCX, PPTX, XLSX, CSV, TXT, or an image)",
+        type=[
+            "pdf", "docx", "pptx", "xlsx", "xls", "csv", "txt",
+            "png", "jpg", "jpeg", "tiff", "tif", "bmp", "webp", "gif",
+        ]
     )
 
     if uploaded_file is not None:
