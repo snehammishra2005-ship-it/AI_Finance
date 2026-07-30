@@ -1,6 +1,7 @@
 
 import os
 import io
+import re
 import csv
 import logging
 
@@ -148,6 +149,36 @@ class FileProcessor:
         return None
 
     @staticmethod
+    def _strip_repeated_lines(text: str) -> str:
+        """
+        Drop running headers/footers - short lines that repeat on most pages of
+        a multi-page PDF (company name, report title, confidentiality notice).
+        They carry no information but create noise chunks and cost extra Groq
+        entity-extraction calls during RAG indexing. Conservative so real
+        content is never removed: needs 4+ pages, a line on > 60% of them, under
+        80 chars, and never touches table rows ('|') or the page markers.
+        """
+        pages = [p for p in re.split(r"--- Page \d+ ---", text) if p.strip()]
+        if len(pages) < 4:
+            return text
+
+        from collections import Counter
+        counts = Counter()
+        for pg in pages:
+            for line in {ln.strip() for ln in pg.splitlines() if ln.strip()}:
+                counts[line] += 1
+
+        threshold = max(3, int(0.6 * len(pages)))
+        boiler = {
+            line for line, c in counts.items()
+            if c >= threshold and len(line) < 80 and not line.startswith("|")
+        }
+        if not boiler:
+            return text
+
+        return "\n".join(ln for ln in text.splitlines() if ln.strip() not in boiler)
+
+    @staticmethod
     def _cap_text(text: str) -> str:
         """Bound total extracted text so a very large document can't overwhelm
         RAG indexing; flags the truncation inline rather than silently."""
@@ -283,6 +314,7 @@ class FileProcessor:
                         parts.append(f"[Table - page {page_num}]\n{formatted}")
 
         text = "\n\n".join(parts)
+        text = FileProcessor._strip_repeated_lines(text)
 
         # Scanned/image PDF: no embedded text was found. Try OCR.
         if FileProcessor.looks_empty(text):

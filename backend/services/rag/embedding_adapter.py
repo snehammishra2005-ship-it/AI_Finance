@@ -1,8 +1,12 @@
 from sentence_transformers import SentenceTransformer
 from lightrag.utils import EmbeddingFunc
 
-# Load once when application starts
-model = SentenceTransformer("all-MiniLM-L6-v2")
+# BGE-small (v1.5) is a retrieval-tuned model that noticeably out-recalls the
+# general-purpose MiniLM on numeric/finance text, while keeping the SAME 384-d
+# output - so existing per-session vector stores stay dimension-compatible (no
+# schema break). NOTE: vectors from the two models aren't interchangeable, so
+# sessions indexed under the old model should be re-ingested for best results.
+model = SentenceTransformer("BAAI/bge-small-en-v1.5")
 
 
 async def embedding_func(texts):

@@ -29,6 +29,17 @@ SESSION_TTL_DAYS = 7
 # against a malformed/malicious value being used to build a filesystem path.
 _SAFE_SESSION_ID = re.compile(r"^[a-zA-Z0-9_-]+$")
 
+# Structure-aware chunking: a split character is inserted before each
+# structural marker the file processor emits, so LightRAG chunks on document
+# structure (page / table / sheet / text-box boundaries) instead of blindly by
+# token count - keeping a financial table intact in one chunk rather than split
+# across two. The marker stays at the segment start, so page/table provenance
+# rides along into the chunk (and thus into what the LLM cites).
+_SEGMENT_CHAR = "\f"
+_SEGMENT_MARKER_RE = re.compile(
+    r"(?=(?:--- Page \d+ ---|\[Table|\[Sheet:|\[Nested table\]|\[Text box\]))"
+)
+
 
 class RAGService:
     """
@@ -130,7 +141,25 @@ class RAGService:
         if file_path:
             replaced = await self._delete_docs_by_filename(file_path)
 
-        track_id = await self.rag.ainsert(text, file_paths=file_path)
+        # Chunk on document structure (see _SEGMENT_MARKER_RE) rather than
+        # blindly by token count. split_by_character_only=False means a segment
+        # larger than the token cap is still further split, so huge pages don't
+        # become one giant chunk. Fall back to a plain insert if this LightRAG
+        # build doesn't accept the split arguments.
+        segmented = _SEGMENT_MARKER_RE.sub(_SEGMENT_CHAR, text)
+        try:
+            track_id = await self.rag.ainsert(
+                segmented,
+                split_by_character=_SEGMENT_CHAR,
+                split_by_character_only=False,
+                file_paths=file_path,
+            )
+        except TypeError:
+            logger.warning(
+                "LightRAG.ainsert lacks split_by_character; using plain insert "
+                "(structure-aware chunking inactive on this build)."
+            )
+            track_id = await self.rag.ainsert(text, file_paths=file_path)
 
         statuses = await self.rag.aget_docs_by_track_id(track_id)
 
@@ -199,6 +228,24 @@ class RAGService:
         )
 
         return answer
+
+    async def get_context(self, question: str) -> str:
+        """
+        Return the retrieved document context for a question WITHOUT letting
+        LightRAG synthesize an answer (only_need_context=True). Used by the
+        web+document blend so the retrieved chunks can be combined with web
+        results into a single cited answer. Returns "" if unavailable.
+        """
+        await self.initialize()
+        try:
+            ctx = await self.rag.aquery(
+                question,
+                param=QueryParam(mode="mix", only_need_context=True),
+            )
+        except TypeError:
+            # Older LightRAG without only_need_context: fall back to the answer.
+            ctx = await self.rag.aquery(question, param=QueryParam(mode="mix"))
+        return ctx or ""
 
 
 class RAGServiceManager:
