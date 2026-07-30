@@ -138,10 +138,11 @@ def chat_endpoint(request: ChatRequest):
         web_note = None
 
         if request.web_search:
-            # Fail fast before spending a web-search call if the selected
-            # model can't even be initialized (e.g. missing key), so we don't
-            # burn a Tavily credit on a request that can't be answered anyway.
-            llm_engine.ensure_provider(request.slm_model)
+            # Fail fast before spending a web-search call only if NO provider
+            # is usable (checks the whole fallback chain, not just the primary),
+            # so we don't burn a Tavily credit on a request that can't be
+            # answered anyway.
+            llm_engine.ensure_any_provider(request.slm_model)
 
             web = web_search(request.message)
             if web is None:
@@ -153,9 +154,11 @@ def chat_endpoint(request: ChatRequest):
             else:
                 web_note = "No web results found; answered without web sources."
 
-        # Pass the selected model straight through so concurrent requests
-        # with different models can't race on shared engine state.
-        response_text = llm_engine.generate_response(
+        # Pass the selected model straight through (per-call, so concurrent
+        # requests can't race), with transparent fallback to another
+        # configured provider if it fails. used_model is what actually
+        # answered - which the UI reports, so a fallback is visible.
+        response_text, used_model = llm_engine.generate_response_with_model(
             message=message,
             persona=request.persona,
             model_name=request.slm_model,
@@ -168,7 +171,7 @@ def chat_endpoint(request: ChatRequest):
 
         return {
             "response": response_text,
-            "model": request.slm_model,
+            "model": used_model,
             "sources": sources,
             "web_note": web_note,
         }
