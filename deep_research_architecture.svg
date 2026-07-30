@@ -1,0 +1,111 @@
+<svg viewBox="0 0 960 620" xmlns="http://www.w3.org/2000/svg" style="color:#1f2937" role="img" aria-label="Deep Research integration data architecture">
+  <title>Deep Research Integration — Data Architecture</title>
+  <desc>Chat web-search flow: fail-fast provider check, Tavily search, score ranking, prompt build, LLM synthesis with citations, and sanitize, with graceful degradation.</desc>
+  <defs>
+    <marker id="da" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="currentColor" fill-opacity="0.55"/>
+    </marker>
+    <style>
+      .box{fill:none;stroke:currentColor;stroke-opacity:.28;}
+      .lbl{fill:currentColor;font-family:ui-sans-serif,system-ui,Segoe UI,Arial,sans-serif;font-weight:600;}
+      .sub{fill:currentColor;fill-opacity:.62;font-family:ui-sans-serif,system-ui,Segoe UI,Arial,sans-serif;}
+      .hdr{fill:currentColor;font-family:ui-sans-serif,system-ui,Segoe UI,Arial,sans-serif;font-weight:700;}
+      .flow{stroke:currentColor;stroke-opacity:.35;fill:none;}
+      .elab{fill:currentColor;fill-opacity:.55;font-family:ui-sans-serif,system-ui,Segoe UI,Arial,sans-serif;font-style:italic;}
+      .accent{stroke:#3b82f6;}
+      .guard{stroke:#ef4444;stroke-opacity:.7;}
+      .ext{stroke:#5b6b7f;stroke-opacity:.7;}
+      .out{stroke:#22c55e;stroke-opacity:.8;}
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="960" height="620" fill="#ffffff"/>
+  <text x="430" y="28" text-anchor="middle" font-size="18" class="hdr">Deep Research Integration — Data Architecture</text>
+
+  <!-- center spine -->
+  <rect class="box accent" x="280" y="52" width="300" height="34" rx="17"/>
+  <text x="430" y="73" text-anchor="middle" font-size="11.5" class="lbl">User question · "Search the web" ON</text>
+
+  <rect class="box" x="280" y="104" width="300" height="30" rx="7"/>
+  <text x="430" y="124" text-anchor="middle" font-size="11.5" class="lbl">POST /chat · web_search = true</text>
+
+  <rect class="box guard" x="280" y="152" width="300" height="38" rx="7"/>
+  <text x="430" y="169" text-anchor="middle" font-size="11" class="lbl">ensure_provider() · model usable?</text>
+  <text x="430" y="182" text-anchor="middle" font-size="8.5" class="sub">else 502 — no Tavily call wasted</text>
+
+  <rect class="box" x="280" y="206" width="300" height="30" rx="7"/>
+  <text x="430" y="226" text-anchor="middle" font-size="11.5" class="lbl">web_search(query)</text>
+
+  <rect class="box guard" x="280" y="254" width="300" height="32" rx="7"/>
+  <text x="430" y="274" text-anchor="middle" font-size="11.5" class="lbl">results returned?</text>
+
+  <rect class="box" x="280" y="304" width="300" height="38" rx="7"/>
+  <text x="430" y="321" text-anchor="middle" font-size="11" class="lbl">Rank by score · drop &lt; 0.3</text>
+  <text x="430" y="334" text-anchor="middle" font-size="8.5" class="sub">keep best if all weak</text>
+
+  <rect class="box" x="280" y="360" width="300" height="38" rx="7"/>
+  <text x="430" y="377" text-anchor="middle" font-size="11" class="lbl">build_web_prompt</text>
+  <text x="430" y="390" text-anchor="middle" font-size="8.5" class="sub">numbered context + sources list</text>
+
+  <rect class="box" x="280" y="416" width="300" height="38" rx="7"/>
+  <text x="430" y="433" text-anchor="middle" font-size="11" class="lbl">generate_response · synthesis</text>
+  <text x="430" y="446" text-anchor="middle" font-size="8.5" class="sub">inline [n] citations</text>
+
+  <rect class="box" x="280" y="472" width="300" height="32" rx="7"/>
+  <text x="430" y="488" text-anchor="middle" font-size="10.5" class="lbl">strip_invalid_citations</text>
+  <text x="430" y="499" text-anchor="middle" font-size="8" class="sub">drop out-of-range [n]</text>
+
+  <rect class="box out" x="280" y="522" width="300" height="34" rx="17"/>
+  <text x="430" y="543" text-anchor="middle" font-size="11.5" class="lbl">Answer + sources list + web_note</text>
+
+  <!-- spine arrows -->
+  <line class="flow" x1="430" y1="86"  x2="430" y2="104" marker-end="url(#da)"/>
+  <line class="flow" x1="430" y1="134" x2="430" y2="152" marker-end="url(#da)"/>
+  <line class="flow" x1="430" y1="190" x2="430" y2="206" marker-end="url(#da)"/>
+  <line class="flow" x1="430" y1="236" x2="430" y2="254" marker-end="url(#da)"/>
+  <line class="flow" x1="430" y1="286" x2="430" y2="304" marker-end="url(#da)"/>
+  <line class="flow" x1="430" y1="342" x2="430" y2="360" marker-end="url(#da)"/>
+  <line class="flow" x1="430" y1="398" x2="430" y2="416" marker-end="url(#da)"/>
+  <line class="flow" x1="430" y1="454" x2="430" y2="472" marker-end="url(#da)"/>
+  <line class="flow" x1="430" y1="504" x2="430" y2="522" marker-end="url(#da)"/>
+
+  <!-- edge labels -->
+  <text x="440" y="300" font-size="8.5" class="elab">Yes</text>
+
+  <!-- external services (right) -->
+  <rect class="box ext" x="660" y="196" width="270" height="50" rx="8"/>
+  <text x="795" y="216" text-anchor="middle" font-size="11.5" class="lbl">Tavily API</text>
+  <text x="795" y="232" text-anchor="middle" font-size="8.5" class="sub">basic depth · ≤6 results · relevance score</text>
+  <line class="flow" x1="580" y1="221" x2="660" y2="221" marker-start="url(#da)" marker-end="url(#da)"/>
+
+  <rect class="box ext" x="660" y="410" width="270" height="50" rx="8"/>
+  <text x="795" y="430" text-anchor="middle" font-size="11.5" class="lbl">LLM · Groq llama-3.1-8b-instant</text>
+  <text x="795" y="446" text-anchor="middle" font-size="8.5" class="sub">writes the cited answer</text>
+  <line class="flow" x1="580" y1="435" x2="660" y2="435" marker-start="url(#da)" marker-end="url(#da)"/>
+
+  <!-- degradation (left) -->
+  <rect class="box guard" x="30" y="240" width="210" height="60" rx="8"/>
+  <text x="135" y="262" text-anchor="middle" font-size="10.5" class="lbl">Graceful degradation</text>
+  <text x="135" y="277" text-anchor="middle" font-size="8.5" class="sub">no key · error · no results</text>
+  <text x="135" y="289" text-anchor="middle" font-size="8.5" class="sub">&#8594; web_note, answer w/o web</text>
+  <line class="flow" x1="280" y1="270" x2="240" y2="270" marker-end="url(#da)"/>
+  <text x="250" y="264" font-size="8.5" class="elab">No</text>
+  <!-- degradation rejoins output -->
+  <path class="flow" d="M135 300 L135 539 L280 539" fill="none" marker-end="url(#da)"/>
+
+  <!-- 502 branch -->
+  <line class="flow" x1="280" y1="171" x2="240" y2="171" marker-end="url(#da)"/>
+  <text x="150" y="168" text-anchor="middle" font-size="8.5" class="sub">unusable → 502</text>
+
+  <!-- legend -->
+  <g font-size="10" class="sub">
+    <rect class="box accent" x="300" y="580" width="16" height="11" rx="3"/>
+    <text x="322" y="589">flow</text>
+    <rect class="box guard" x="372" y="580" width="16" height="11" rx="3"/>
+    <text x="394" y="589">guard</text>
+    <rect class="box ext" x="452" y="580" width="16" height="11" rx="3"/>
+    <text x="474" y="589">external</text>
+    <rect class="box out" x="536" y="580" width="16" height="11" rx="3"/>
+    <text x="558" y="589">answer</text>
+  </g>
+</svg>
