@@ -28,5 +28,17 @@ SLM_LIST = [
         "provider": "anthropic",
         "model_id": "claude-3-haiku-20240307",
         "description": "Fast and responsive model from Anthropic"
+    },
+    {
+        "name": "Llama 3.3 70B (Cerebras)",
+        "provider": "cerebras",
+        "model_id": "llama-3.3-70b",
+        "description": "Very fast Llama 3.3 70B on Cerebras (free tier)"
+    },
+    {
+        "name": "Mistral Small (Mistral)",
+        "provider": "mistral",
+        "model_id": "mistral-small-latest",
+        "description": "Mistral Small via La Plateforme (free tier)"
     }
 ]

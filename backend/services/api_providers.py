@@ -207,3 +207,72 @@ class AnthropicProvider(BaseLLMProvider):
         except Exception as e:
             logger.error(f"Anthropic API Error: {e}")
             raise LLMProviderError(f"Anthropic: {e}") from e
+
+
+# =========================================================
+# OpenAI-compatible providers (Cerebras, Mistral)
+# =========================================================
+class _OpenAICompatibleProvider(BaseLLMProvider):
+    """
+    Shared implementation for providers that expose an OpenAI-compatible chat
+    completions API - only the base URL and API-key env var differ. Cerebras
+    and Mistral both work this way, so they reuse the already-present `openai`
+    client instead of pulling in a vendor SDK.
+    """
+
+    BASE_URL = None
+    API_KEY_ENV = None
+    LABEL = "provider"
+
+    def __init__(self, model_id: str):
+        super().__init__(model_id)
+
+        from openai import OpenAI
+
+        api_key = os.environ.get(self.API_KEY_ENV)
+        if not api_key:
+            raise ValueError(f"{self.API_KEY_ENV} environment variable is not set")
+
+        self.client = OpenAI(api_key=api_key, base_url=self.BASE_URL)
+
+    def generate_response(self, system_prompt: str, user_message: str) -> str:
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model_id,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_message},
+                ],
+                temperature=0.7,
+                max_tokens=512,
+                timeout=REQUEST_TIMEOUT,
+            )
+
+            content = response.choices[0].message.content
+
+            if content is None:
+                logger.warning(
+                    f"{self.LABEL} returned empty content for model {self.model_id}"
+                )
+                return (
+                    "The model returned an empty response. "
+                    "Please try another prompt."
+                )
+
+            return str(content).strip()
+
+        except Exception as e:
+            logger.error(f"{self.LABEL} API Error: {e}")
+            raise LLMProviderError(f"{self.LABEL}: {e}") from e
+
+
+class CerebrasProvider(_OpenAICompatibleProvider):
+    BASE_URL = "https://api.cerebras.ai/v1"
+    API_KEY_ENV = "CEREBRAS_API_KEY"
+    LABEL = "Cerebras"
+
+
+class MistralProvider(_OpenAICompatibleProvider):
+    BASE_URL = "https://api.mistral.ai/v1"
+    API_KEY_ENV = "MISTRAL_API_KEY"
+    LABEL = "Mistral"

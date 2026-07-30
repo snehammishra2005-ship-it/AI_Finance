@@ -6,6 +6,8 @@ from backend.services.api_providers import (
     GeminiProvider,
     GroqProvider,
     AnthropicProvider,
+    CerebrasProvider,
+    MistralProvider,
     LLMProviderError
 )
 
@@ -19,6 +21,8 @@ PROVIDER_ENV = {
     "google": "GEMINI_API_KEY",
     "groq": "GROQ_API_KEY",
     "anthropic": "ANTHROPIC_API_KEY",
+    "cerebras": "CEREBRAS_API_KEY",
+    "mistral": "MISTRAL_API_KEY",
 }
 
 class LLMEngine:
@@ -70,6 +74,10 @@ class LLMEngine:
                 provider = GroqProvider(model_id)
             elif provider_type == "anthropic":
                 provider = AnthropicProvider(model_id)
+            elif provider_type == "cerebras":
+                provider = CerebrasProvider(model_id)
+            elif provider_type == "mistral":
+                provider = MistralProvider(model_id)
             else:
                 logger.error(f"Unknown provider type: {provider_type}")
                 return None
