@@ -21,7 +21,7 @@ class BaseLLMProvider:
     def __init__(self, model_id: str):
         self.model_id = model_id
 
-    def generate_response(self, system_prompt: str, user_message: str) -> str:
+    def generate_response(self, system_prompt: str, user_message: str, max_tokens: int = 512) -> str:
         raise NotImplementedError("Subclasses must implement generate_response")
 
 
@@ -52,7 +52,8 @@ class OpenRouterProvider(BaseLLMProvider):
     def generate_response(
         self,
         system_prompt: str,
-        user_message: str
+        user_message: str,
+        max_tokens: int = 512
     ) -> str:
 
         try:
@@ -70,7 +71,7 @@ class OpenRouterProvider(BaseLLMProvider):
                     }
                 ],
                 temperature=0.7,
-                max_tokens=512,
+                max_tokens=max_tokens,
                 timeout=REQUEST_TIMEOUT
             )
 
@@ -115,7 +116,7 @@ class GeminiProvider(BaseLLMProvider):
 
         self.model = genai.GenerativeModel(model_name=self.model_id)
 
-    def generate_response(self, system_prompt: str, user_message: str) -> str:
+    def generate_response(self, system_prompt: str, user_message: str, max_tokens: int = 512) -> str:
         try:
             combined_prompt = f"""
             System Instructions:
@@ -127,6 +128,7 @@ class GeminiProvider(BaseLLMProvider):
 
             response = self.model.generate_content(
                 combined_prompt,
+                generation_config={"max_output_tokens": max_tokens},
                 request_options={"timeout": REQUEST_TIMEOUT}
             )
 
@@ -153,7 +155,7 @@ class GroqProvider(BaseLLMProvider):
 
         self.client = Groq(api_key=api_key)
 
-    def generate_response(self, system_prompt: str, user_message: str) -> str:
+    def generate_response(self, system_prompt: str, user_message: str, max_tokens: int = 512) -> str:
         try:
             response = self.client.chat.completions.create(
                 model=self.model_id,
@@ -161,7 +163,7 @@ class GroqProvider(BaseLLMProvider):
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_message}
                 ],
-                max_tokens=512,
+                max_tokens=max_tokens,
                 temperature=0.7,
                 timeout=REQUEST_TIMEOUT
             )
@@ -189,12 +191,12 @@ class AnthropicProvider(BaseLLMProvider):
 
         self.client = Anthropic(api_key=api_key)
 
-    def generate_response(self, system_prompt: str, user_message: str) -> str:
+    def generate_response(self, system_prompt: str, user_message: str, max_tokens: int = 512) -> str:
         try:
             response = self.client.messages.create(
                 model=self.model_id,
                 system=system_prompt,
-                max_tokens=512,
+                max_tokens=max_tokens,
                 messages=[
                     {"role": "user", "content": user_message}
                 ],
@@ -235,7 +237,7 @@ class _OpenAICompatibleProvider(BaseLLMProvider):
 
         self.client = OpenAI(api_key=api_key, base_url=self.BASE_URL)
 
-    def generate_response(self, system_prompt: str, user_message: str) -> str:
+    def generate_response(self, system_prompt: str, user_message: str, max_tokens: int = 512) -> str:
         try:
             response = self.client.chat.completions.create(
                 model=self.model_id,
@@ -244,7 +246,7 @@ class _OpenAICompatibleProvider(BaseLLMProvider):
                     {"role": "user", "content": user_message},
                 ],
                 temperature=0.7,
-                max_tokens=512,
+                max_tokens=max_tokens,
                 timeout=REQUEST_TIMEOUT,
             )
 

@@ -179,6 +179,7 @@ class LLMEngine:
         message: str,
         persona: str = "General Assistant",
         model_name: str = None,
+        max_tokens: int = 512,
     ) -> tuple:
         """
         Generate a response, transparently falling back to other configured
@@ -202,7 +203,7 @@ class LLMEngine:
             name = config.get("name")
             try:
                 provider = self.ensure_provider(name)
-                text = provider.generate_response(system_prompt, message)
+                text = provider.generate_response(system_prompt, message, max_tokens=max_tokens)
                 if i > 0:
                     logger.info(
                         f"Fallback: '{name}' answered after {i} provider(s) failed."
@@ -221,13 +222,16 @@ class LLMEngine:
         message: str,
         persona: str = "General Assistant",
         model_name: str = None,
+        max_tokens: int = 512,
     ) -> str:
         """
         Generate a response (with provider fallback), returning just the text.
         Thin wrapper over generate_response_with_model for callers that don't
         need to know which provider actually answered.
         """
-        text, _ = self.generate_response_with_model(message, persona, model_name)
+        text, _ = self.generate_response_with_model(
+            message, persona, model_name, max_tokens=max_tokens
+        )
         return text
 
 # Singleton usage

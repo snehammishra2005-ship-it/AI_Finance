@@ -134,8 +134,9 @@ def render_chat():
             "🌐 Search the web",
             value=st.session_state.get("use_web", False),
             help="When enabled, the assistant searches the web and lists the "
-                 "sources it used beneath the answer. Takes priority over the "
-                 "document option if both are on."
+                 "sources it used beneath the answer. Turn this on together "
+                 "with the document option to blend your uploaded documents "
+                 "with live web results in one cited answer."
         )
 
     st.session_state.use_rag = use_rag
@@ -182,7 +183,9 @@ def render_chat():
         # ---------------------------------------------
         # Determine mode (web search takes priority over docs)
         # ---------------------------------------------
-        if use_web:
+        if use_web and use_rag:
+            mode = "blend"          # web + uploaded documents, one cited answer
+        elif use_web:
             mode = "web"
         elif use_rag:
             mode = "rag"
@@ -196,6 +199,7 @@ def render_chat():
 
             spinner_text = {
                 "web": "Searching the web...",
+                "blend": "Searching your documents + the web...",
                 "rag": "Searching your documents...",
                 "chat": f"Thinking with {slm}...",
             }[mode]
@@ -223,9 +227,13 @@ def render_chat():
                                 "message": user_input,
                                 "persona": persona,
                                 "slm_model": slm,
-                                "web_search": (mode == "web"),
+                                "web_search": (mode in ("web", "blend")),
+                                "use_documents": (mode == "blend"),
+                                "session_id": st.session_state.get("session_id", "default"),
                             },
-                            timeout=120
+                            # blend/web do an iterative search + synthesis, so
+                            # allow a bit more time than a plain chat turn.
+                            timeout=180
                         )
 
                     # -------- Success --------
@@ -284,6 +292,8 @@ def render_chat():
                 st.caption("📚 Answered from your uploaded documents")
             elif mode == "web":
                 st.caption(f"🌐 Web search · {active_model}")
+            elif mode == "blend":
+                st.caption(f"🌐📚 Web + documents · {active_model}")
             else:
                 st.caption(f"🤖 Model Used: {active_model}")
 

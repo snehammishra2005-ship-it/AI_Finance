@@ -18,6 +18,11 @@ import logging
 # auth in front of this endpoint. read() is bounded to this many bytes below.
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 MB
 
+# Web/research answers (and web+document blends) synthesize over more source
+# material than a plain chat reply, so they get a larger output budget than the
+# 512-token default.
+WEB_MAX_TOKENS = 1024
+
 # Load environment variables from .env
 from dotenv import load_dotenv
 load_dotenv()
@@ -31,7 +36,9 @@ from backend.services.rag.rag_service import rag_service_manager
 from backend.services.metric_extractor import extract_financial_metrics
 from backend.services.research_service import (
     web_search,
+    iterative_web_search,
     build_web_prompt,
+    build_blend_prompt,
     strip_invalid_citations,
 )
 
@@ -91,6 +98,10 @@ class ChatRequest(BaseModel):
     persona: str = "General User"
     slm_model: str = "Llama 3.1 8B Instant (Groq)"
     web_search: bool = False
+    # When True (and the session has uploaded documents), the answer blends
+    # the user's document context with web results into one cited reply.
+    use_documents: bool = False
+    session_id: str = "default"
 
 class AnalysisRequest(BaseModel):
     filename: str
@@ -121,51 +132,82 @@ def root():
     }
 
 @app.post("/chat")
-def chat_endpoint(request: ChatRequest):
+async def chat_endpoint(request: ChatRequest):
     """
-    Handles chat requests using the selected LLM. When web_search is enabled,
-    the message is augmented with live Tavily results and the response is
-    returned alongside the list of web sources the model was given to cite.
+    Handles chat requests using the selected LLM.
+
+    - web_search: augments the message with live Tavily results (iterative,
+      bounded to two searches) and returns the web sources to cite.
+    - use_documents (+ web_search): blends the session's uploaded-document
+      context with the web results into one cited answer.
+
+    Blocking work (web search, synchronous LLM calls) is run in a threadpool
+    so this async endpoint doesn't stall the event loop.
     """
     try:
         logger.info(
             f"Chat Request: {request.message[:20]}... | Persona: {request.persona} "
-            f"| web_search={request.web_search}"
+            f"| web_search={request.web_search} | use_documents={request.use_documents}"
         )
 
         message = request.message
         sources = []
         web_note = None
+        max_tokens = 512
 
+        # Retrieve uploaded-document context (for blending with the web).
+        doc_context = ""
+        if request.use_documents and rag_service_manager.session_has_documents(request.session_id):
+            rag_service = await rag_service_manager.get(request.session_id)
+            doc_context = await rag_service.get_context(request.message)
+
+        # Web search (iterative, bounded) - only if requested.
+        web_results = []
         if request.web_search:
-            # Fail fast before spending a web-search call only if NO provider
-            # is usable (checks the whole fallback chain, not just the primary),
-            # so we don't burn a Tavily credit on a request that can't be
-            # answered anyway.
+            # Fail fast only if NO provider in the fallback chain is usable, so
+            # we don't burn a Tavily credit on an unanswerable request.
             llm_engine.ensure_any_provider(request.slm_model)
 
-            web = web_search(request.message)
+            def _refine(prompt):
+                return llm_engine.generate_response(
+                    prompt, persona="General Assistant", model_name=request.slm_model,
+                    max_tokens=60,
+                )
+
+            web = await run_in_threadpool(iterative_web_search, request.message, _refine)
             if web is None:
                 web_note = "Web search is not configured (no TAVILY_API_KEY); answered without web sources."
             elif "error" in web:
                 web_note = "Web search failed; answered without web sources."
             elif web.get("results"):
-                message, sources = build_web_prompt(request.message, web["results"])
+                web_results = web["results"]
             else:
                 web_note = "No web results found; answered without web sources."
 
-        # Pass the selected model straight through (per-call, so concurrent
-        # requests can't race), with transparent fallback to another
-        # configured provider if it fails. used_model is what actually
-        # answered - which the UI reports, so a fallback is visible.
-        response_text, used_model = llm_engine.generate_response_with_model(
-            message=message,
-            persona=request.persona,
-            model_name=request.slm_model,
+        # Compose the prompt from whatever context we have.
+        if web_results and doc_context:
+            message, sources = build_blend_prompt(request.message, doc_context, web_results)
+            max_tokens = WEB_MAX_TOKENS
+        elif web_results:
+            message, sources = build_web_prompt(request.message, web_results)
+            max_tokens = WEB_MAX_TOKENS
+        elif doc_context:
+            # Web unavailable but we have the user's documents: ground in them.
+            message = (
+                "Answer the user's question using the uploaded document context "
+                "below. If it doesn't contain the answer, say so.\n\n"
+                f"UPLOADED DOCUMENT CONTEXT:\n{doc_context}\n\n"
+                f"QUESTION: {request.message}"
+            )
+            max_tokens = WEB_MAX_TOKENS
+
+        # Synthesize (blocking + per-call fallback) off the event loop.
+        response_text, used_model = await run_in_threadpool(
+            llm_engine.generate_response_with_model,
+            message, request.persona, request.slm_model, max_tokens,
         )
 
-        # Drop any [n] citations the model emitted that point past the sources
-        # we actually returned, so the UI never shows a dangling reference.
+        # Drop any [n] citations pointing past the sources we returned.
         if sources:
             response_text = strip_invalid_citations(response_text, len(sources))
 
