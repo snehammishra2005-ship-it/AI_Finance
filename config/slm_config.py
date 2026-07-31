@@ -30,10 +30,10 @@ SLM_LIST = [
         "description": "Fast and responsive model from Anthropic"
     },
     {
-        "name": "Llama 3.3 70B (Cerebras)",
+        "name": "GPT-OSS 120B (Cerebras)",
         "provider": "cerebras",
-        "model_id": "llama-3.3-70b",
-        "description": "Very fast Llama 3.3 70B on Cerebras (free tier)"
+        "model_id": "gpt-oss-120b",
+        "description": "GPT-OSS 120B on Cerebras - very fast inference (free tier)"
     },
     {
         "name": "Mistral Small (Mistral)",
