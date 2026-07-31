@@ -18,9 +18,9 @@ SLM_LIST = [
         "description": "GPT-5.5 via OpenRouter"
     },
     {
-        "name": "Gemini 1.5 Flash (Google)",
+        "name": "Gemini 3 Flash (Google)",
         "provider": "google",
-        "model_id": "gemini-1.5-flash",
+        "model_id": "gemini-3-flash-preview",
         "description": "Fast multimodal model from Google"
     },
     {
