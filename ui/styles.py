@@ -227,6 +227,17 @@ def inject_global_css():
             padding: 0.15rem 0.4rem;
         }
         [data-testid="stChatInput"] textarea { font-size: 1rem; }
+        /* Streamlit's inner input wrapper + textarea inherit the theme's grey
+           secondary background and an 8px radius, which shows as a second box
+           inside our pill. Make them transparent/borderless so only the outer
+           pill is visible. */
+        [data-testid="stChatInput"] > div,
+        [data-testid="stChatInput"] [data-baseweb="textarea"],
+        [data-testid="stChatInput"] [data-baseweb="base-input"] {
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+        }
         [data-testid="stChatInput"]:focus-within {
             border-color: rgba(0,0,0,0.18);
         }
