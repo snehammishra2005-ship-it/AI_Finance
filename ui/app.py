@@ -156,7 +156,7 @@ if page == "chat":
         st.markdown(
             """
             <div class="welcome-wrap">
-                <div class="welcome-title">What can I help with?</div>
+                <div class="welcome-title">Ready when you are.</div>
                 <div class="welcome-subtitle">
                     Ask about financial analysis, investments, RBI policies,
                     or GDP &amp; inflation — or attach a document to get started.

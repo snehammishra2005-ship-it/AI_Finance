@@ -84,7 +84,7 @@ def render_sidebar():
         # CHAT HISTORY
         # =================================================
         st.markdown(
-            "<div class='sidebar-section-label'>Chats</div>",
+            "<div class='sidebar-section-label'>Recents</div>",
             unsafe_allow_html=True
         )
 
@@ -107,3 +107,19 @@ def render_sidebar():
                     on_click=load_chat_callback,
                     args=(history["path"],)
                 )
+
+        # =================================================
+        # USER ACCOUNT ROW (decorative - the app has no auth)
+        # =================================================
+        st.markdown(
+            """
+            <div class='sidebar-user'>
+                <div class='avatar'>AF</div>
+                <div class='who'>
+                    <div class='name'>AI in Finance</div>
+                    <div class='plan'>Local build</div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
