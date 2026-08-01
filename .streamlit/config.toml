@@ -2,3 +2,15 @@
 enableCORS = false
 enableXsrfProtection = false
 maxMessageSize = 500
+
+# Force a consistent light theme so the whole app (including Streamlit's own
+# header and chat-input chrome) matches the light ChatGPT-style design in
+# ui/styles.py. Without this, the app follows the OS/browser dark preference
+# and the hardcoded light surfaces clash with dark chrome.
+[theme]
+base = "light"
+primaryColor = "#000000"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f9f9f9"
+textColor = "#1a1a1a"
+font = "sans serif"

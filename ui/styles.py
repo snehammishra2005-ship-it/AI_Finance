@@ -39,6 +39,16 @@ def inject_global_css():
         [data-testid="stMain"] {
             background: var(--bg-main);
         }
+        /* Streamlit's own top header + bottom chat-input chrome, so they match
+           the light content area instead of showing a dark bar. */
+        [data-testid="stHeader"] {
+            background: var(--bg-main);
+        }
+        [data-testid="stBottom"],
+        [data-testid="stBottom"] > div,
+        [data-testid="stBottomBlockContainer"] {
+            background: var(--bg-main);
+        }
 
         .block-container {
             max-width: 820px;
