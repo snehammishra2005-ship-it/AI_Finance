@@ -70,7 +70,7 @@ class OpenRouterProvider(BaseLLMProvider):
                         "content": user_message
                     }
                 ],
-                temperature=0.7,
+                temperature=0.4,
                 max_tokens=max_tokens,
                 timeout=REQUEST_TIMEOUT
             )
@@ -128,7 +128,7 @@ class GeminiProvider(BaseLLMProvider):
 
             response = self.model.generate_content(
                 combined_prompt,
-                generation_config={"max_output_tokens": max_tokens},
+                generation_config={"max_output_tokens": max_tokens, "temperature": 0.4},
                 request_options={"timeout": REQUEST_TIMEOUT}
             )
 
@@ -164,7 +164,7 @@ class GroqProvider(BaseLLMProvider):
                     {"role": "user", "content": user_message}
                 ],
                 max_tokens=max_tokens,
-                temperature=0.7,
+                temperature=0.4,
                 timeout=REQUEST_TIMEOUT
             )
 
@@ -200,7 +200,7 @@ class AnthropicProvider(BaseLLMProvider):
                 messages=[
                     {"role": "user", "content": user_message}
                 ],
-                temperature=0.7,
+                temperature=0.4,
                 timeout=REQUEST_TIMEOUT
             )
 
@@ -245,7 +245,7 @@ class _OpenAICompatibleProvider(BaseLLMProvider):
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_message},
                 ],
-                temperature=0.7,
+                temperature=0.4,
                 max_tokens=max_tokens,
                 timeout=REQUEST_TIMEOUT,
             )

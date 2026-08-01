@@ -18,9 +18,11 @@ import logging
 # auth in front of this endpoint. read() is bounded to this many bytes below.
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 MB
 
-# Web/research answers (and web+document blends) synthesize over more source
-# material than a plain chat reply, so they get a larger output budget than the
-# 512-token default.
+# Output token budgets. Plain chat gets a roomier budget than the old 512 so a
+# well-structured answer isn't cut off (the persona style guide still caps actual
+# length). Web/research/blend answers synthesize over more source material and
+# get more still.
+CHAT_MAX_TOKENS = 800
 WEB_MAX_TOKENS = 1024
 
 # Load environment variables from .env
@@ -153,7 +155,7 @@ async def chat_endpoint(request: ChatRequest):
         message = request.message
         sources = []
         web_note = None
-        max_tokens = 512
+        max_tokens = CHAT_MAX_TOKENS
 
         # Retrieve uploaded-document context (for blending with the web).
         doc_context = ""

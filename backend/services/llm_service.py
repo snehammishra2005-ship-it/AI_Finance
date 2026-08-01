@@ -25,6 +25,34 @@ PROVIDER_ENV = {
     "mistral": "MISTRAL_API_KEY",
 }
 
+# Base instructions applied to every answer. It sets the quality bar (accuracy,
+# grounding, plain-language clarity, clean formatting, and an educational rather
+# than advisory stance); the per-persona style guide is appended after it and
+# is the authority for tone, vocabulary, and answer length.
+BASE_SYSTEM_PROMPT = (
+    "You are an AI finance assistant for people who are not finance experts. "
+    "Follow these rules on every answer:\n"
+    "1. Accuracy first: rely only on facts you are confident about. NEVER invent "
+    "numbers, prices, rates, dates, or statistics. If you are unsure or lack the "
+    "data, say so plainly instead of guessing.\n"
+    "2. Use the given context: when document or web-search context is provided, "
+    "ground your answer in it and cite it as instructed; do not contradict it.\n"
+    "3. Lead with the answer: give the direct answer first, then a brief "
+    "explanation. Define any financial term in plain words the first time you "
+    "use it.\n"
+    "4. Formatting: reply in clean Markdown - short paragraphs, **bold** for key "
+    "figures and terms, and bullet lists for steps or comparisons. Keep it "
+    "scannable and do not over-format a one-line answer.\n"
+    "5. Educational, not advice: give general educational information, not "
+    "personalized investment, tax, or legal advice. If asked what someone should "
+    "personally buy or invest in, explain the options and trade-offs and suggest "
+    "consulting a licensed professional for personal decisions.\n\n"
+    "The audience style guide below is the STRICT authority for tone, vocabulary, "
+    "and answer length - follow it exactly, and let it override the general "
+    "formatting defaults above when they conflict (e.g. if it asks for very short "
+    "answers)."
+)
+
 class LLMEngine:
     """
     Acts as a router to dispatch generation requests to the correct API
@@ -196,7 +224,10 @@ class LLMEngine:
 
         from utils.persona_manager import get_persona_prompt
         persona_instructions = get_persona_prompt(persona)
-        system_prompt = f"You are a helpful AI finance assistant. {persona_instructions}"
+        system_prompt = (
+            f"{BASE_SYSTEM_PROMPT}\n\n"
+            f"--- AUDIENCE STYLE GUIDE ---\n{persona_instructions}"
+        )
 
         errors = []
         for i, config in enumerate(configs):
