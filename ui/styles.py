@@ -77,8 +77,8 @@ def inject_global_css():
 
         .block-container {
             max-width: 820px;
-            padding-top: 4rem;
-            padding-bottom: 7rem;
+            padding-top: 3rem;
+            padding-bottom: 1.5rem;
             margin: 0 auto;
         }
 
@@ -210,8 +210,9 @@ def inject_global_css():
             min-height: 2.4rem;
         }
 
-        /* Welcome / greeting */
-        .welcome-wrap { text-align: center; margin: 4.5rem 0 2.2rem 0; }
+        /* Welcome / greeting — pushed toward vertical center on the empty
+           screen (the composer sits inline just below it). */
+        .welcome-wrap { text-align: center; margin: 12vh 0 2rem 0; }
         .welcome-title {
             font-size: 2.1rem;
             font-weight: 700;

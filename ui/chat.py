@@ -29,13 +29,9 @@ def render_chat_header():
     if current_persona not in personas:
         current_persona = personas[0]
 
-    title_col, model_col, persona_col = st.columns([3, 2, 2])
-
-    with title_col:
-        st.markdown(
-            "<p class='chat-title'>📊 AI Finance Assistant</p>",
-            unsafe_allow_html=True
-        )
+    # Slim top bar: just the model + persona pickers on the left (the brand
+    # lives in the sidebar), so the header isn't cramped.
+    model_col, persona_col, _spacer = st.columns([3, 3, 4])
 
     with model_col:
         selected_slm = st.selectbox(
@@ -118,55 +114,67 @@ def render_chat():
                 st.caption(message["caption"])
 
     # =================================================
-    # COMPOSER  —  [ + attach ]  [ text input ]  [ send ]
-    # A bordered pill: the "+" popover holds the attach/upload panel, the
-    # form gives Enter-to-send + auto-clear. Toggles sit BELOW it.
+    # COMPOSER DOCK  —  [ + attach ] [ input ] [ send ]  + toggles below
+    # On the welcome screen the dock sits inline under the centered greeting;
+    # once a conversation exists it's pinned to the bottom of the viewport
+    # (ChatGPT-style) so messages scroll above it.
     # =================================================
-    with st.container(border=True, key="composer_pill"):
-        plus_col, form_col = st.columns([0.09, 1], vertical_alignment="center")
+    has_messages = bool(st.session_state.messages)
 
-        with plus_col:
-            # "+" opens the full attach-a-document panel (kept out of the form,
-            # since Streamlit forms can't hold a file uploader).
-            with st.popover("＋", use_container_width=True):
-                render_file_upload()
-
-        with form_col:
-            with st.form("composer", clear_on_submit=True, border=False):
-                input_col, send_col = st.columns([1, 0.08], vertical_alignment="center")
-                with input_col:
-                    user_input = st.text_input(
-                        "message",
-                        placeholder="Ask about finance, inflation, investments, "
-                                    "uploaded reports, or policies...",
-                        label_visibility="collapsed",
-                    )
-                with send_col:
-                    submitted = st.form_submit_button("↑", use_container_width=True)
-
-    # ---- Tools: toggles BELOW the input ----
-    toggle_col1, toggle_col2 = st.columns(2)
-
-    with toggle_col1:
-        use_rag = st.checkbox(
-            "📚 Answer using my uploaded documents",
-            value=st.session_state.get("use_rag", False),
-            help="When enabled, answers are grounded in documents you've uploaded "
-                 "instead of a general chat response."
+    if has_messages:
+        st.markdown(
+            "<style>.st-key-composer_dock{position:sticky;bottom:0;z-index:20;"
+            "background:var(--bg-main);padding-top:10px;padding-bottom:2px;}</style>",
+            unsafe_allow_html=True,
         )
 
-    with toggle_col2:
-        use_web = st.checkbox(
-            "🌐 Search the web",
-            value=st.session_state.get("use_web", False),
-            help="When enabled, the assistant searches the web and lists the "
-                 "sources it used beneath the answer. Turn this on together "
-                 "with the document option to blend your uploaded documents "
-                 "with live web results in one cited answer."
-        )
+    with st.container(key="composer_dock"):
 
-    st.session_state.use_rag = use_rag
-    st.session_state.use_web = use_web
+        with st.container(border=True, key="composer_pill"):
+            plus_col, form_col = st.columns([0.09, 1], vertical_alignment="center")
+
+            with plus_col:
+                # "+" opens the attach-a-document panel (kept out of the form,
+                # since Streamlit forms can't hold a file uploader).
+                with st.popover("＋", use_container_width=True):
+                    render_file_upload()
+
+            with form_col:
+                with st.form("composer", clear_on_submit=True, border=False):
+                    input_col, send_col = st.columns([1, 0.08], vertical_alignment="center")
+                    with input_col:
+                        user_input = st.text_input(
+                            "message",
+                            placeholder="Ask about finance, inflation, investments, "
+                                        "uploaded reports, or policies...",
+                            label_visibility="collapsed",
+                        )
+                    with send_col:
+                        submitted = st.form_submit_button("↑", use_container_width=True)
+
+        # ---- Tools: toggles BELOW the input ----
+        toggle_col1, toggle_col2 = st.columns(2)
+
+        with toggle_col1:
+            use_rag = st.checkbox(
+                "📚 Answer using my uploaded documents",
+                value=st.session_state.get("use_rag", False),
+                help="When enabled, answers are grounded in documents you've uploaded "
+                     "instead of a general chat response."
+            )
+
+        with toggle_col2:
+            use_web = st.checkbox(
+                "🌐 Search the web",
+                value=st.session_state.get("use_web", False),
+                help="When enabled, the assistant searches the web and lists the "
+                     "sources it used beneath the answer. Turn this on together "
+                     "with the document option to blend your uploaded documents "
+                     "with live web results in one cited answer."
+            )
+
+        st.session_state.use_rag = use_rag
+        st.session_state.use_web = use_web
 
     # =================================================
     # HANDLE USER MESSAGE
