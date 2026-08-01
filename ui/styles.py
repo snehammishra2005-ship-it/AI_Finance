@@ -15,7 +15,7 @@ def inject_global_css():
     st.markdown(
         """
         <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
         :root {
             --bg-main: #17130d;
             --bg-sidebar: #1e180f;
@@ -48,6 +48,18 @@ def inject_global_css():
            lowering the root font size shrinks all text proportionally. */
         html { font-size: 14px; }
         html, body { color: var(--text-primary); }
+
+        /* Headings use Space Grotesk (display); body stays Inter. Needs
+           !important + these specific selectors to beat the blanket Inter rule
+           above, including markdown headings inside answers. */
+        .welcome-title, .chat-title, .sidebar-brand,
+        h1, h2, h3,
+        [data-testid="stMarkdownContainer"] h1,
+        [data-testid="stMarkdownContainer"] h2,
+        [data-testid="stMarkdownContainer"] h3 {
+            font-family: "Space Grotesk", "Inter", -apple-system,
+                "Segoe UI", sans-serif !important;
+        }
 
         /* ---- Surfaces ---- */
         [data-testid="stAppViewContainer"],
