@@ -3,12 +3,13 @@ import streamlit as st
 
 def inject_global_css():
     """
-    Global styling that gives the app a clean, minimal, ChatGPT-like look:
-    an off-white rounded sidebar, a white content area, pill-shaped controls,
-    soft shadows instead of hard borders, and generous whitespace.
+    Global styling — "Carbon amber" dark theme: warm charcoal surfaces, a gold
+    accent, pill-shaped controls, soft depth instead of hard borders, and
+    generous whitespace.
 
-    This is presentation only - it restyles the existing widgets and does not
-    change any behaviour, callbacks, or page structure.
+    Presentation only — it restyles the existing widgets and does not change any
+    behaviour, callbacks, or page structure. Palette lives in :root, so swapping
+    themes is a matter of editing the variables here (+ .streamlit/config.toml).
     """
 
     st.markdown(
@@ -16,17 +17,22 @@ def inject_global_css():
         <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         :root {
-            --bg-main: #ffffff;
-            --bg-sidebar: #f9f9f9;
-            --bg-hover: #ececec;
-            --bg-active: #e8e8e8;
-            --text-primary: #1a1a1a;
-            --text-secondary: #8a8a8a;
-            --accent: #000000;
+            --bg-main: #17130d;
+            --bg-sidebar: #1e180f;
+            --bg-hover: #2a2016;
+            --bg-active: #33281a;
+            --surface: #221b11;
+            --text-primary: #efe7db;
+            --text-secondary: #a29688;
+            --accent: #f59e0b;
+            --accent-hover: #fbb43b;
+            --on-accent: #1a1400;
+            --border: rgba(255,255,255,0.09);
+            --border-strong: rgba(255,255,255,0.20);
             --radius-pill: 999px;
             --radius-card: 16px;
-            --shadow-soft: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
-            --shadow-input: 0 2px 12px rgba(0,0,0,0.08);
+            --shadow-soft: 0 1px 3px rgba(0,0,0,0.40);
+            --shadow-input: 0 2px 14px rgba(0,0,0,0.45);
         }
 
         /* One clean font everywhere. Inter (loaded above) with a system
@@ -48,8 +54,6 @@ def inject_global_css():
         [data-testid="stMain"] {
             background: var(--bg-main);
         }
-        /* Streamlit's own top header + bottom chat-input chrome, so they match
-           the light content area instead of showing a dark bar. */
         [data-testid="stHeader"] {
             background: var(--bg-main);
         }
@@ -83,10 +87,9 @@ def inject_global_css():
             padding-right: 0.9rem;
             max-width: 100%;
         }
-        /* soften Streamlit's default dividers */
         section[data-testid="stSidebar"] hr {
             margin: 0.6rem 0;
-            border-color: rgba(0,0,0,0.06);
+            border-color: var(--border);
         }
 
         .sidebar-brand {
@@ -123,20 +126,17 @@ def inject_global_css():
             background: var(--bg-hover);
             color: var(--text-primary);
         }
-        /* "New chat" (primary) gets a subtle solid emphasis */
         section[data-testid="stSidebar"] .stButton button[kind="primary"],
         section[data-testid="stSidebar"] [data-testid="baseButton-primary"] {
             background: var(--bg-active);
             font-weight: 600;
         }
         section[data-testid="stSidebar"] .stButton button[kind="primary"]:hover {
-            background: #e0e0e0;
+            background: #3f3120;
         }
 
-        /* Page nav radio -> ChatGPT-style nav rows (hide the radio dots) */
-        section[data-testid="stSidebar"] div[role="radiogroup"] {
-            gap: 2px;
-        }
+        /* Page nav radio -> nav rows (hide the radio dots) */
+        section[data-testid="stSidebar"] div[role="radiogroup"] { gap: 2px; }
         section[data-testid="stSidebar"] div[role="radiogroup"] label {
             border-radius: 10px;
             padding: 0.4rem 0.6rem;
@@ -153,7 +153,7 @@ def inject_global_css():
             font-weight: 600;
         }
         section[data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child {
-            display: none;  /* hide the radio circle */
+            display: none;
         }
 
         /* User account row pinned near the bottom */
@@ -169,8 +169,8 @@ def inject_global_css():
         .sidebar-user .avatar {
             width: 30px; height: 30px;
             border-radius: 50%;
-            background: #1a1a1a;
-            color: #fff;
+            background: var(--accent);
+            color: var(--on-accent);
             display: flex; align-items: center; justify-content: center;
             font-size: 0.72rem; font-weight: 700;
             flex: 0 0 auto;
@@ -180,7 +180,6 @@ def inject_global_css():
         .sidebar-user .who .plan { font-size: 0.72rem; color: var(--text-secondary); }
 
         /* ================= MAIN AREA ================= */
-        /* Chat header title */
         .chat-title {
             font-size: 1.05rem;
             font-weight: 650;
@@ -192,22 +191,19 @@ def inject_global_css():
         div[data-testid="stSelectbox"] label { display: none; }
         div[data-testid="stSelectbox"] > div > div {
             border-radius: var(--radius-pill);
-            border: 1px solid rgba(0,0,0,0.08);
-            background: #fff;
+            border: 1px solid var(--border);
+            background: var(--surface);
             box-shadow: var(--shadow-soft);
             font-size: 0.85rem;
             min-height: 2.4rem;
         }
 
         /* Welcome / greeting */
-        .welcome-wrap {
-            text-align: center;
-            margin: 4.5rem 0 2.2rem 0;
-        }
+        .welcome-wrap { text-align: center; margin: 4.5rem 0 2.2rem 0; }
         .welcome-title {
             font-size: 2.1rem;
             font-weight: 700;
-            color: #2b2b2b;
+            color: var(--text-primary);
             letter-spacing: -0.02em;
         }
         .welcome-subtitle {
@@ -227,19 +223,15 @@ def inject_global_css():
         [data-testid="stChatMessage"] p { font-size: 1rem; line-height: 1.7; }
         [data-testid="stChatMessage"] .stCaption { font-size: 0.75rem; }
 
-        /* Chat input -> prominent pill with soft shadow, no hard border */
+        /* Chat input (legacy widget) -> pill */
         [data-testid="stChatInput"] {
             border-radius: var(--radius-pill);
-            border: 1px solid rgba(0,0,0,0.08);
+            border: 1px solid var(--border);
             box-shadow: var(--shadow-input);
-            background: #fff;
+            background: var(--surface);
             padding: 0.15rem 0.4rem;
         }
         [data-testid="stChatInput"] textarea { font-size: 1rem; }
-        /* Streamlit's inner input wrapper + textarea inherit the theme's grey
-           secondary background and an 8px radius, which shows as a second box
-           inside our pill. Make them transparent/borderless so only the outer
-           pill is visible. */
         [data-testid="stChatInput"] > div,
         [data-testid="stChatInput"] [data-baseweb="textarea"],
         [data-testid="stChatInput"] [data-baseweb="base-input"] {
@@ -247,25 +239,21 @@ def inject_global_css():
             border: none !important;
             box-shadow: none !important;
         }
-        [data-testid="stChatInput"]:focus-within {
-            border-color: rgba(0,0,0,0.18);
-        }
-        /* Send button -> black circular accent */
+        [data-testid="stChatInput"]:focus-within { border-color: var(--border-strong); }
         [data-testid="stChatInput"] button {
             border-radius: 50%;
             background: var(--accent);
-            color: #fff;
+            color: var(--on-accent);
         }
 
         /* ---- Composer pill: bordered container with [+] [input] [send] ---- */
         .st-key-composer_pill {
             border-radius: var(--radius-pill) !important;
-            border: 1px solid rgba(0,0,0,0.12) !important;
+            border: 1px solid var(--border) !important;
             box-shadow: var(--shadow-input) !important;
-            background: #fff !important;
+            background: var(--surface) !important;
             padding: 0.1rem 0.6rem !important;
         }
-        /* strip the inner form + text-input chrome so it reads as one pill */
         [data-testid="stForm"] {
             border: none !important;
             padding: 0 !important;
@@ -284,46 +272,42 @@ def inject_global_css():
             border: none !important;
             background: transparent !important;
             box-shadow: none !important;
-            color: #333 !important;
+            color: var(--text-secondary) !important;
             font-size: 1.2rem;
             min-height: 36px;
         }
         [data-testid="stPopover"] button:hover { background: var(--bg-hover) !important; }
-        /* hide the popover's default expand chevron so only the "+" shows */
         [data-testid="stPopover"] button [data-testid="stIconMaterial"] {
             display: none !important;
         }
-        /* send button (form submit) -> black circle */
+        /* send button (form submit) -> gold accent circle */
         [data-testid="stFormSubmitButton"] button {
             border-radius: 50% !important;
-            background: #000 !important;
-            color: #fff !important;
+            background: var(--accent) !important;
+            color: var(--on-accent) !important;
             border: none !important;
             box-shadow: none !important;
             min-height: 34px;
         }
-        [data-testid="stFormSubmitButton"] button:hover { background: #222 !important; }
+        [data-testid="stFormSubmitButton"] button:hover { background: var(--accent-hover) !important; }
 
-        /* Attach / toggles -> soft rounded card, subtle shadow, no hard border */
+        /* Attach / toggles -> soft rounded card */
         [data-testid="stExpander"] {
             border-radius: var(--radius-card);
             border: none;
             box-shadow: var(--shadow-soft);
-            background: #fff;
+            background: var(--surface);
             overflow: hidden;
         }
 
         /* Generic buttons in the main area -> rounded, soft */
         [data-testid="stMain"] .stButton button {
             border-radius: var(--radius-pill);
-            border: 1px solid rgba(0,0,0,0.08);
+            border: 1px solid var(--border);
             box-shadow: var(--shadow-soft);
         }
-        [data-testid="stMain"] .stButton button:hover {
-            border-color: rgba(0,0,0,0.18);
-        }
+        [data-testid="stMain"] .stButton button:hover { border-color: var(--border-strong); }
 
-        /* Download buttons + dataframes rounded */
         [data-testid="stDownloadButton"] button { border-radius: var(--radius-pill); }
         </style>
         """,

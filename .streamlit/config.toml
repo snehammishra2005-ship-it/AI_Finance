@@ -3,14 +3,13 @@ enableCORS = false
 enableXsrfProtection = false
 maxMessageSize = 500
 
-# Force a consistent light theme so the whole app (including Streamlit's own
-# header and chat-input chrome) matches the light ChatGPT-style design in
-# ui/styles.py. Without this, the app follows the OS/browser dark preference
-# and the hardcoded light surfaces clash with dark chrome.
+# "Carbon amber" dark theme. Pin Streamlit to dark with matching colors so its
+# own chrome (header, dropdown menus, the attach popover, checkboxes) matches
+# the dark surfaces set in ui/styles.py.
 [theme]
-base = "light"
-primaryColor = "#000000"
-backgroundColor = "#ffffff"
-secondaryBackgroundColor = "#f9f9f9"
-textColor = "#1a1a1a"
+base = "dark"
+primaryColor = "#f59e0b"
+backgroundColor = "#17130d"
+secondaryBackgroundColor = "#221b11"
+textColor = "#efe7db"
 font = "sans serif"
