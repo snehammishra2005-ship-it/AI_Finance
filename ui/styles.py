@@ -14,6 +14,7 @@ def inject_global_css():
     st.markdown(
         """
         <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
         :root {
             --bg-main: #ffffff;
             --bg-sidebar: #f9f9f9;
@@ -28,11 +29,16 @@ def inject_global_css():
             --shadow-input: 0 2px 12px rgba(0,0,0,0.08);
         }
 
-        html, body, [class*="css"] {
-            font-family: "Söhne", -apple-system, BlinkMacSystemFont, "Segoe UI",
-                Inter, Roboto, Helvetica, Arial, sans-serif;
-            color: var(--text-primary);
+        /* One clean font everywhere. Inter (loaded above) with a system
+           fallback; !important so it also overrides Streamlit's own default
+           font on its emotion-cache classes for a consistent look. */
+        html, body, .stApp, [class*="css"], [class*="st-"],
+        button, input, textarea, select,
+        [data-testid="stMarkdownContainer"], [data-testid="stMarkdownContainer"] * {
+            font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
+                Roboto, Helvetica, Arial, sans-serif !important;
         }
+        html, body { color: var(--text-primary); }
 
         /* ---- Surfaces ---- */
         [data-testid="stAppViewContainer"],
