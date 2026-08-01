@@ -257,6 +257,53 @@ def inject_global_css():
             color: #fff;
         }
 
+        /* ---- Composer pill: bordered container with [+] [input] [send] ---- */
+        .st-key-composer_pill {
+            border-radius: var(--radius-pill) !important;
+            border: 1px solid rgba(0,0,0,0.12) !important;
+            box-shadow: var(--shadow-input) !important;
+            background: #fff !important;
+            padding: 0.1rem 0.6rem !important;
+        }
+        /* strip the inner form + text-input chrome so it reads as one pill */
+        [data-testid="stForm"] {
+            border: none !important;
+            padding: 0 !important;
+            background: transparent !important;
+        }
+        .st-key-composer_pill [data-baseweb="input"],
+        .st-key-composer_pill [data-baseweb="base-input"],
+        .st-key-composer_pill input {
+            border: none !important;
+            background: transparent !important;
+            box-shadow: none !important;
+        }
+        /* "+" attach trigger -> round, subtle */
+        [data-testid="stPopover"] button {
+            border-radius: 50% !important;
+            border: none !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            color: #333 !important;
+            font-size: 1.2rem;
+            min-height: 36px;
+        }
+        [data-testid="stPopover"] button:hover { background: var(--bg-hover) !important; }
+        /* hide the popover's default expand chevron so only the "+" shows */
+        [data-testid="stPopover"] button [data-testid="stIconMaterial"] {
+            display: none !important;
+        }
+        /* send button (form submit) -> black circle */
+        [data-testid="stFormSubmitButton"] button {
+            border-radius: 50% !important;
+            background: #000 !important;
+            color: #fff !important;
+            border: none !important;
+            box-shadow: none !important;
+            min-height: 34px;
+        }
+        [data-testid="stFormSubmitButton"] button:hover { background: #222 !important; }
+
         /* Attach / toggles -> soft rounded card, subtle shadow, no hard border */
         [data-testid="stExpander"] {
             border-radius: var(--radius-card);

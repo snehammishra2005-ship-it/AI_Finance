@@ -112,13 +112,39 @@ def render_chat():
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
             render_sources(message.get("sources"))
+            if message.get("web_note"):
+                st.caption(f"ℹ️ {message['web_note']}")
+            if message.get("caption"):
+                st.caption(message["caption"])
 
     # =================================================
-    # FILE UPLOAD SECTION
+    # COMPOSER  —  [ + attach ]  [ text input ]  [ send ]
+    # A bordered pill: the "+" popover holds the attach/upload panel, the
+    # form gives Enter-to-send + auto-clear. Toggles sit BELOW it.
     # =================================================
-    with st.expander("📎 Attach a document"):
-        render_file_upload()
+    with st.container(border=True, key="composer_pill"):
+        plus_col, form_col = st.columns([0.09, 1], vertical_alignment="center")
 
+        with plus_col:
+            # "+" opens the full attach-a-document panel (kept out of the form,
+            # since Streamlit forms can't hold a file uploader).
+            with st.popover("＋", use_container_width=True):
+                render_file_upload()
+
+        with form_col:
+            with st.form("composer", clear_on_submit=True, border=False):
+                input_col, send_col = st.columns([1, 0.08], vertical_alignment="center")
+                with input_col:
+                    user_input = st.text_input(
+                        "message",
+                        placeholder="Ask about finance, inflation, investments, "
+                                    "uploaded reports, or policies...",
+                        label_visibility="collapsed",
+                    )
+                with send_col:
+                    submitted = st.form_submit_button("↑", use_container_width=True)
+
+    # ---- Tools: toggles BELOW the input ----
     toggle_col1, toggle_col2 = st.columns(2)
 
     with toggle_col1:
@@ -143,48 +169,19 @@ def render_chat():
     st.session_state.use_web = use_web
 
     # =================================================
-    # CHAT INPUT
-    # =================================================
-    user_input = st.chat_input(
-        "Ask about finance, inflation, investments, uploaded reports, or policies..."
-    )
-
-    # =================================================
     # HANDLE USER MESSAGE
     # =================================================
-    if user_input:
+    if submitted and user_input and user_input.strip():
 
-        # ---------------------------------------------
-        # Store user message
-        # ---------------------------------------------
-        user_message = {
-            "role": "user",
-            "content": user_input
-        }
+        user_input = user_input.strip()
+        st.session_state.messages.append({"role": "user", "content": user_input})
 
-        st.session_state.messages.append(user_message)
+        persona = st.session_state.get("persona", "General User")
+        slm = st.session_state.get("slm", "Llama 3.1 8B Instant (Groq)")
 
-        with st.chat_message("user"):
-            st.markdown(user_input)
-
-        # ---------------------------------------------
-        # Read selected settings
-        # ---------------------------------------------
-        persona = st.session_state.get(
-            "persona",
-            "General User"
-        )
-
-        slm = st.session_state.get(
-            "slm",
-            "Llama 3.1 8B Instant (Groq)"
-        )
-
-        # ---------------------------------------------
-        # Determine mode (web search takes priority over docs)
-        # ---------------------------------------------
+        # Determine mode (both toggles = blend web + documents)
         if use_web and use_rag:
-            mode = "blend"          # web + uploaded documents, one cited answer
+            mode = "blend"
         elif use_web:
             mode = "web"
         elif use_rag:
@@ -192,127 +189,108 @@ def render_chat():
         else:
             mode = "chat"
 
-        # ---------------------------------------------
-        # Assistant Response
-        # ---------------------------------------------
-        with st.chat_message("assistant"):
+        spinner_text = {
+            "web": "Searching the web...",
+            "blend": "Searching your documents + the web...",
+            "rag": "Searching your documents...",
+            "chat": f"Thinking with {slm}...",
+        }[mode]
 
-            spinner_text = {
-                "web": "Searching the web...",
-                "blend": "Searching your documents + the web...",
-                "rag": "Searching your documents...",
-                "chat": f"Thinking with {slm}...",
-            }[mode]
+        sources = []
+        web_note = None
 
-            sources = []
-            web_note = None
+        with st.spinner(spinner_text):
+            try:
+                # -------- Request per mode --------
+                if mode == "rag":
+                    response = requests.post(
+                        url=f"{BACKEND_BASE_URL}/rag/ask",
+                        json={
+                            "question": user_input,
+                            "session_id": st.session_state.get("session_id", "default")
+                        },
+                        timeout=120
+                    )
+                else:
+                    # Prior turns (everything before the message just added) so
+                    # the assistant has conversation memory. Cap to the last
+                    # few to bound tokens; send role + content only.
+                    history = [
+                        {"role": m["role"], "content": m["content"]}
+                        for m in st.session_state.messages[:-1]
+                    ][-8:]
 
-            with st.spinner(spinner_text):
+                    response = requests.post(
+                        url=f"{BACKEND_BASE_URL}/chat",
+                        json={
+                            "message": user_input,
+                            "persona": persona,
+                            "slm_model": slm,
+                            "web_search": (mode in ("web", "blend")),
+                            "use_documents": (mode == "blend"),
+                            "session_id": st.session_state.get("session_id", "default"),
+                            "history": history,
+                        },
+                        timeout=180
+                    )
 
-                try:
-                    # -------- Request per mode --------
+                # -------- Success --------
+                if response.status_code == 200:
+                    data = response.json()
                     if mode == "rag":
-                        response = requests.post(
-                            url=f"{BACKEND_BASE_URL}/rag/ask",
-                            json={
-                                "question": user_input,
-                                "session_id": st.session_state.get("session_id", "default")
-                            },
-                            timeout=120
-                        )
+                        ai_response = data.get("answer", "No answer returned from backend.")
+                        active_model = "Document RAG (Groq)"
                     else:
-                        # Prior turns (everything before the message just added)
-                        # so the assistant has conversation memory. Cap to the
-                        # last few to bound tokens; send role + content only.
-                        history = [
-                            {"role": m["role"], "content": m["content"]}
-                            for m in st.session_state.messages[:-1]
-                        ][-8:]
+                        ai_response = data.get("response", "No response returned from backend.")
+                        active_model = data.get("model", slm)
+                        sources = data.get("sources", []) or []
+                        web_note = data.get("web_note")
 
-                        response = requests.post(
-                            url=f"{BACKEND_BASE_URL}/chat",
-                            json={
-                                "message": user_input,
-                                "persona": persona,
-                                "slm_model": slm,
-                                "web_search": (mode in ("web", "blend")),
-                                "use_documents": (mode == "blend"),
-                                "session_id": st.session_state.get("session_id", "default"),
-                                "history": history,
-                            },
-                            # blend/web do an iterative search + synthesis, so
-                            # allow a bit more time than a plain chat turn.
-                            timeout=180
-                        )
-
-                    # -------- Success --------
-                    if response.status_code == 200:
-
-                        data = response.json()
-
-                        if mode == "rag":
-                            ai_response = data.get("answer", "No answer returned from backend.")
-                            active_model = "Document RAG (Groq)"
-                        else:
-                            ai_response = data.get("response", "No response returned from backend.")
-                            active_model = data.get("model", slm)
-                            sources = data.get("sources", []) or []
-                            web_note = data.get("web_note")
-
-                    # -------- Backend error --------
-                    else:
-                        try:
-                            detail = response.json().get("detail", response.text)
-                        except Exception:
-                            detail = response.text
-                        ai_response = (
-                            f"⚠️ The model could not answer "
-                            f"({response.status_code}):\n\n{detail}"
-                        )
-                        active_model = slm
-
-                except requests.exceptions.Timeout:
+                # -------- Backend error --------
+                else:
+                    try:
+                        detail = response.json().get("detail", response.text)
+                    except Exception:
+                        detail = response.text
                     ai_response = (
-                        "⚠️ Request timed out.\n\n"
-                        "The selected model may be taking too long to respond."
+                        f"⚠️ The model could not answer "
+                        f"({response.status_code}):\n\n{detail}"
                     )
                     active_model = slm
 
-                except requests.exceptions.ConnectionError:
-                    ai_response = (
-                        "⚠️ Could not connect to backend.\n\n"
-                        "Make sure FastAPI server is running."
-                    )
-                    active_model = slm
+            except requests.exceptions.Timeout:
+                ai_response = (
+                    "⚠️ Request timed out.\n\n"
+                    "The selected model may be taking too long to respond."
+                )
+                active_model = slm
 
-                except Exception as e:
-                    ai_response = f"⚠️ Unexpected Error:\n\n{str(e)}"
-                    active_model = slm
+            except requests.exceptions.ConnectionError:
+                ai_response = (
+                    "⚠️ Could not connect to backend.\n\n"
+                    "Make sure FastAPI server is running."
+                )
+                active_model = slm
 
-            # -------- Display --------
-            st.markdown(ai_response)
+            except Exception as e:
+                ai_response = f"⚠️ Unexpected Error:\n\n{str(e)}"
+                active_model = slm
 
-            render_sources(sources)
+        caption = {
+            "rag": "📚 Answered from your uploaded documents",
+            "web": f"🌐 Web search · {active_model}",
+            "blend": f"🌐📚 Web + documents · {active_model}",
+            "chat": f"🤖 Model Used: {active_model}",
+        }[mode]
 
-            if web_note:
-                st.caption(f"ℹ️ {web_note}")
-
-            if mode == "rag":
-                st.caption("📚 Answered from your uploaded documents")
-            elif mode == "web":
-                st.caption(f"🌐 Web search · {active_model}")
-            elif mode == "blend":
-                st.caption(f"🌐📚 Web + documents · {active_model}")
-            else:
-                st.caption(f"🤖 Model Used: {active_model}")
-
-        # =================================================
-        # SAVE ASSISTANT MESSAGE (with sources so they persist)
-        # =================================================
-        assistant_message = {
+        st.session_state.messages.append({
             "role": "assistant",
             "content": ai_response,
             "sources": sources,
-        }
+            "web_note": web_note,
+            "caption": caption,
+        })
 
-        st.session_state.messages.append(assistant_message)
+        # Re-render so the new turn shows above the composer (correct order)
+        # and the input clears.
+        st.rerun()
