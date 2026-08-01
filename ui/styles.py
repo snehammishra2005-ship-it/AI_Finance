@@ -38,6 +38,9 @@ def inject_global_css():
             font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
                 Roboto, Helvetica, Arial, sans-serif !important;
         }
+        /* Global scale-down: Streamlit sizes text in rem off the root, so
+           lowering the root font size shrinks all text proportionally. */
+        html { font-size: 14px; }
         html, body { color: var(--text-primary); }
 
         /* ---- Surfaces ---- */
