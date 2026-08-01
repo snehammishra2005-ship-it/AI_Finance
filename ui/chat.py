@@ -221,6 +221,14 @@ def render_chat():
                             timeout=120
                         )
                     else:
+                        # Prior turns (everything before the message just added)
+                        # so the assistant has conversation memory. Cap to the
+                        # last few to bound tokens; send role + content only.
+                        history = [
+                            {"role": m["role"], "content": m["content"]}
+                            for m in st.session_state.messages[:-1]
+                        ][-8:]
+
                         response = requests.post(
                             url=f"{BACKEND_BASE_URL}/chat",
                             json={
@@ -230,6 +238,7 @@ def render_chat():
                                 "web_search": (mode in ("web", "blend")),
                                 "use_documents": (mode == "blend"),
                                 "session_id": st.session_state.get("session_id", "default"),
+                                "history": history,
                             },
                             # blend/web do an iterative search + synthesis, so
                             # allow a bit more time than a plain chat turn.

@@ -46,7 +46,14 @@ BASE_SYSTEM_PROMPT = (
     "5. Educational, not advice: give general educational information, not "
     "personalized investment, tax, or legal advice. If asked what someone should "
     "personally buy or invest in, explain the options and trade-offs and suggest "
-    "consulting a licensed professional for personal decisions.\n\n"
+    "consulting a licensed professional for personal decisions.\n"
+    "6. Completeness: answer every part of a multi-part question, and include the "
+    "caveats or edge cases that genuinely matter - without padding.\n"
+    "7. Ambiguity: if the question is genuinely unclear, state the assumption you "
+    "are answering under, or ask one brief clarifying question, instead of "
+    "guessing wrong.\n"
+    "8. Stay consistent with the conversation so far and do not contradict your "
+    "earlier answers.\n\n"
     "The audience style guide below is the STRICT authority for tone, vocabulary, "
     "and answer length - follow it exactly, and let it override the general "
     "formatting defaults above when they conflict (e.g. if it asks for very short "
@@ -208,6 +215,7 @@ class LLMEngine:
         persona: str = "General Assistant",
         model_name: str = None,
         max_tokens: int = 512,
+        history: list = None,
     ) -> tuple:
         """
         Generate a response, transparently falling back to other configured
@@ -234,7 +242,7 @@ class LLMEngine:
             name = config.get("name")
             try:
                 provider = self.ensure_provider(name)
-                text = provider.generate_response(system_prompt, message, max_tokens=max_tokens)
+                text = provider.generate_response(system_prompt, message, max_tokens=max_tokens, history=history)
                 if i > 0:
                     logger.info(
                         f"Fallback: '{name}' answered after {i} provider(s) failed."
@@ -254,6 +262,7 @@ class LLMEngine:
         persona: str = "General Assistant",
         model_name: str = None,
         max_tokens: int = 512,
+        history: list = None,
     ) -> str:
         """
         Generate a response (with provider fallback), returning just the text.
@@ -261,7 +270,7 @@ class LLMEngine:
         need to know which provider actually answered.
         """
         text, _ = self.generate_response_with_model(
-            message, persona, model_name, max_tokens=max_tokens
+            message, persona, model_name, max_tokens=max_tokens, history=history
         )
         return text
 

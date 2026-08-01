@@ -8,6 +8,20 @@ logger = logging.getLogger(__name__)
 REQUEST_TIMEOUT = 60
 
 
+def _oai_messages(system_prompt: str, user_message: str, history=None) -> list:
+    """
+    Assemble OpenAI-style chat messages: the system prompt, any prior
+    conversation turns, then the current user message. `history` is a list of
+    {"role": "user"|"assistant", "content": str}; None/empty means single-turn
+    (unchanged behaviour).
+    """
+    messages = [{"role": "system", "content": system_prompt}]
+    if history:
+        messages.extend(history)
+    messages.append({"role": "user", "content": user_message})
+    return messages
+
+
 class LLMProviderError(Exception):
     """
     Raised when a provider's API call fails (bad key, rate limit, timeout,
@@ -21,7 +35,7 @@ class BaseLLMProvider:
     def __init__(self, model_id: str):
         self.model_id = model_id
 
-    def generate_response(self, system_prompt: str, user_message: str, max_tokens: int = 512) -> str:
+    def generate_response(self, system_prompt: str, user_message: str, max_tokens: int = 512, history: list = None) -> str:
         raise NotImplementedError("Subclasses must implement generate_response")
 
 
@@ -53,23 +67,15 @@ class OpenRouterProvider(BaseLLMProvider):
         self,
         system_prompt: str,
         user_message: str,
-        max_tokens: int = 512
+        max_tokens: int = 512,
+        history: list = None
     ) -> str:
 
         try:
 
             response = self.client.chat.completions.create(
                 model=self.model_id,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": system_prompt
-                    },
-                    {
-                        "role": "user",
-                        "content": user_message
-                    }
-                ],
+                messages=_oai_messages(system_prompt, user_message, history),
                 temperature=0.4,
                 max_tokens=max_tokens,
                 timeout=REQUEST_TIMEOUT
@@ -116,15 +122,19 @@ class GeminiProvider(BaseLLMProvider):
 
         self.model = genai.GenerativeModel(model_name=self.model_id)
 
-    def generate_response(self, system_prompt: str, user_message: str, max_tokens: int = 512) -> str:
+    def generate_response(self, system_prompt: str, user_message: str, max_tokens: int = 512, history: list = None) -> str:
         try:
-            combined_prompt = f"""
-            System Instructions:
-            {system_prompt}
+            convo = ""
+            if history:
+                for m in history:
+                    who = "User" if m.get("role") == "user" else "Assistant"
+                    convo += f"{who}: {m.get('content', '')}\n"
 
-            User Message:
-            {user_message}
-            """
+            combined_prompt = (
+                f"System Instructions:\n{system_prompt}\n\n"
+                f"{convo}"
+                f"User Message:\n{user_message}"
+            )
 
             response = self.model.generate_content(
                 combined_prompt,
@@ -155,14 +165,11 @@ class GroqProvider(BaseLLMProvider):
 
         self.client = Groq(api_key=api_key)
 
-    def generate_response(self, system_prompt: str, user_message: str, max_tokens: int = 512) -> str:
+    def generate_response(self, system_prompt: str, user_message: str, max_tokens: int = 512, history: list = None) -> str:
         try:
             response = self.client.chat.completions.create(
                 model=self.model_id,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_message}
-                ],
+                messages=_oai_messages(system_prompt, user_message, history),
                 max_tokens=max_tokens,
                 temperature=0.4,
                 timeout=REQUEST_TIMEOUT
@@ -191,15 +198,16 @@ class AnthropicProvider(BaseLLMProvider):
 
         self.client = Anthropic(api_key=api_key)
 
-    def generate_response(self, system_prompt: str, user_message: str, max_tokens: int = 512) -> str:
+    def generate_response(self, system_prompt: str, user_message: str, max_tokens: int = 512, history: list = None) -> str:
         try:
+            a_messages = list(history) if history else []
+            a_messages.append({"role": "user", "content": user_message})
+
             response = self.client.messages.create(
                 model=self.model_id,
                 system=system_prompt,
                 max_tokens=max_tokens,
-                messages=[
-                    {"role": "user", "content": user_message}
-                ],
+                messages=a_messages,
                 temperature=0.4,
                 timeout=REQUEST_TIMEOUT
             )
@@ -237,14 +245,11 @@ class _OpenAICompatibleProvider(BaseLLMProvider):
 
         self.client = OpenAI(api_key=api_key, base_url=self.BASE_URL)
 
-    def generate_response(self, system_prompt: str, user_message: str, max_tokens: int = 512) -> str:
+    def generate_response(self, system_prompt: str, user_message: str, max_tokens: int = 512, history: list = None) -> str:
         try:
             response = self.client.chat.completions.create(
                 model=self.model_id,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_message},
-                ],
+                messages=_oai_messages(system_prompt, user_message, history),
                 temperature=0.4,
                 max_tokens=max_tokens,
                 timeout=REQUEST_TIMEOUT,

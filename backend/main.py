@@ -25,6 +25,9 @@ MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 MB
 CHAT_MAX_TOKENS = 800
 WEB_MAX_TOKENS = 1024
 
+# How many prior conversation turns to keep as context (bounds token cost).
+MAX_HISTORY_MESSAGES = 8
+
 # Load environment variables from .env
 from dotenv import load_dotenv
 load_dotenv()
@@ -104,6 +107,9 @@ class ChatRequest(BaseModel):
     # the user's document context with web results into one cited reply.
     use_documents: bool = False
     session_id: str = "default"
+    # Prior conversation turns [{role: "user"|"assistant", content: str}, ...]
+    # so answers stay relevant/coherent across a multi-turn chat.
+    history: list = []
 
 class AnalysisRequest(BaseModel):
     filename: str
@@ -203,10 +209,20 @@ async def chat_endpoint(request: ChatRequest):
             )
             max_tokens = WEB_MAX_TOKENS
 
+        # Sanitize the client-supplied conversation history: keep only
+        # well-formed user/assistant turns, and cap the count to bound tokens.
+        history = [
+            {"role": m["role"], "content": str(m["content"])}
+            for m in (request.history or [])
+            if isinstance(m, dict)
+            and m.get("role") in ("user", "assistant")
+            and m.get("content")
+        ][-MAX_HISTORY_MESSAGES:]
+
         # Synthesize (blocking + per-call fallback) off the event loop.
         response_text, used_model = await run_in_threadpool(
             llm_engine.generate_response_with_model,
-            message, request.persona, request.slm_model, max_tokens,
+            message, request.persona, request.slm_model, max_tokens, history,
         )
 
         # Drop any [n] citations pointing past the sources we returned.
