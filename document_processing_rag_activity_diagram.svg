@@ -1,0 +1,104 @@
+<svg viewBox="0 0 680 760" xmlns="http://www.w3.org/2000/svg" style="color:#1f2937" role="img" aria-label="Document processing with RAG activity diagram">
+  <title>Document Processing with RAG — Activity Diagram</title>
+  <defs>
+    <marker id="dv" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="currentColor" fill-opacity="0.55"/>
+    </marker>
+    <style>
+      .box{fill:none;stroke:currentColor;stroke-opacity:.3;}
+      .lbl{fill:currentColor;font-family:ui-sans-serif,system-ui,Segoe UI,Arial,sans-serif;font-weight:600;}
+      .sub{fill:currentColor;fill-opacity:.6;font-family:ui-sans-serif,system-ui,Segoe UI,Arial,sans-serif;}
+      .hdr{fill:currentColor;font-family:ui-sans-serif,system-ui,Segoe UI,Arial,sans-serif;font-weight:700;}
+      .flow{stroke:currentColor;stroke-opacity:.4;fill:none;}
+      .term{stroke:#1e8449;}
+      .dec{stroke:#b7791f;}
+      .err{stroke:#c0392b;}
+      .new{stroke:#2563eb;stroke-opacity:.85;}
+      .elab{fill:currentColor;fill-opacity:.6;font-family:ui-sans-serif,system-ui,Segoe UI,Arial,sans-serif;font-size:10px;}
+    </style>
+  </defs>
+  <rect x="0" y="0" width="680" height="760" fill="#ffffff"/>
+  <text x="300" y="26" text-anchor="middle" font-size="16" class="hdr">Document Processing with RAG — Activity Diagram</text>
+
+  <rect class="box term" x="180" y="42" width="240" height="30" rx="15"/>
+  <text x="300" y="62" text-anchor="middle" font-size="11.5" class="lbl">Document uploaded</text>
+  <line class="flow" x1="300" y1="72" x2="300" y2="86" marker-end="url(#dv)"/>
+
+  <rect class="box" x="150" y="86" width="300" height="34" rx="7"/>
+  <text x="300" y="102" text-anchor="middle" font-size="11" class="lbl">Read ≤ 25 MB · detect type by content</text>
+  <text x="300" y="114" text-anchor="middle" font-size="8.5" class="sub">oversized → 413</text>
+  <line class="flow" x1="300" y1="120" x2="300" y2="134" marker-end="url(#dv)"/>
+
+  <rect class="box" x="150" y="134" width="300" height="34" rx="7"/>
+  <text x="300" y="150" text-anchor="middle" font-size="11" class="lbl">Extract text · preserve tables</text>
+  <text x="300" y="162" text-anchor="middle" font-size="8.5" class="sub">OCR fallback for scans/images</text>
+  <line class="flow" x1="300" y1="168" x2="300" y2="182" marker-end="url(#dv)"/>
+
+  <polygon class="box dec" points="300,182 430,220 300,258 170,220"/>
+  <text x="300" y="216" text-anchor="middle" font-size="10.5" class="lbl">Extraction</text>
+  <text x="300" y="229" text-anchor="middle" font-size="10.5" class="lbl">sufficient?</text>
+  <line class="flow" x1="430" y1="220" x2="500" y2="220" marker-end="url(#dv)"/>
+  <text x="440" y="214" class="elab">No</text>
+  <rect class="box err" x="500" y="202" width="150" height="36" rx="18"/>
+  <text x="575" y="224" text-anchor="middle" font-size="10" class="lbl">Warn · not indexed</text>
+  <line class="flow" x1="300" y1="258" x2="300" y2="274" marker-end="url(#dv)"/>
+  <text x="312" y="272" class="elab">Yes</text>
+
+  <rect class="box new" x="150" y="274" width="300" height="30" rx="7"/>
+  <text x="300" y="293" text-anchor="middle" font-size="10.5" class="lbl">★ Strip boilerplate · cap 200k</text>
+  <line class="flow" x1="300" y1="304" x2="300" y2="318" marker-end="url(#dv)"/>
+
+  <rect class="box new" x="150" y="318" width="300" height="30" rx="7"/>
+  <text x="300" y="337" text-anchor="middle" font-size="10.5" class="lbl">★ Segment on page/table/sheet markers</text>
+  <line class="flow" x1="300" y1="348" x2="300" y2="362" marker-end="url(#dv)"/>
+
+  <rect class="box new" x="150" y="362" width="300" height="30" rx="7"/>
+  <text x="300" y="381" text-anchor="middle" font-size="10.5" class="lbl">★ Chunk · structure-aware</text>
+  <line class="flow" x1="300" y1="392" x2="230" y2="410" marker-end="url(#dv)"/>
+  <line class="flow" x1="300" y1="392" x2="370" y2="410" marker-end="url(#dv)"/>
+
+  <rect class="box new" x="70" y="410" width="200" height="34" rx="7"/>
+  <text x="170" y="426" text-anchor="middle" font-size="10.5" class="lbl">★ Embed · bge-small</text>
+  <text x="170" y="438" text-anchor="middle" font-size="8.5" class="sub">384-d</text>
+
+  <rect class="box" x="330" y="410" width="220" height="34" rx="7"/>
+  <text x="440" y="426" text-anchor="middle" font-size="10.5" class="lbl">Entities/graph · Groq</text>
+
+  <line class="flow" x1="170" y1="444" x2="270" y2="466" marker-end="url(#dv)"/>
+  <line class="flow" x1="440" y1="444" x2="330" y2="466" marker-end="url(#dv)"/>
+
+  <rect class="box" x="220" y="466" width="160" height="40" rx="8"/>
+  <line class="box" x1="220" y1="476" x2="380" y2="476"/>
+  <text x="300" y="492" text-anchor="middle" font-size="10.5" class="lbl">Per-session store</text>
+  <line class="flow" x1="300" y1="506" x2="300" y2="522" marker-end="url(#dv)"/>
+
+  <polygon class="box dec" points="300,522 420,558 300,594 180,558"/>
+  <text x="300" y="562" text-anchor="middle" font-size="11" class="lbl">Indexed OK?</text>
+  <line class="flow" x1="420" y1="558" x2="490" y2="558" marker-end="url(#dv)"/>
+  <text x="430" y="552" class="elab">No</text>
+  <rect class="box err" x="490" y="540" width="160" height="38" rx="10"/>
+  <text x="570" y="558" text-anchor="middle" font-size="9.5" class="lbl">Report error</text>
+  <text x="570" y="570" text-anchor="middle" font-size="8" class="sub">retry via /rag/reprocess</text>
+  <line class="flow" x1="300" y1="594" x2="300" y2="610" marker-end="url(#dv)"/>
+  <text x="312" y="608" class="elab">Yes</text>
+
+  <rect class="box term" x="190" y="610" width="220" height="32" rx="16"/>
+  <text x="300" y="630" text-anchor="middle" font-size="11" class="lbl">Document searchable</text>
+  <line class="flow" x1="300" y1="642" x2="300" y2="656" marker-end="url(#dv)"/>
+
+  <rect class="box" x="180" y="656" width="240" height="32" rx="7"/>
+  <text x="300" y="676" text-anchor="middle" font-size="10.5" class="lbl">/rag/ask · hybrid (mix) query</text>
+  <line class="flow" x1="300" y1="688" x2="300" y2="702" marker-end="url(#dv)"/>
+
+  <rect class="box term" x="190" y="702" width="220" height="32" rx="16"/>
+  <text x="300" y="722" text-anchor="middle" font-size="11" class="lbl">✓ Cited grounded answer</text>
+
+  <g font-size="10" class="sub">
+    <rect class="box new" x="470" y="656" width="15" height="11" rx="3"/>
+    <text x="490" y="665">★ new</text>
+    <rect class="box dec" x="470" y="674" width="15" height="11"/>
+    <text x="490" y="683">decision</text>
+    <rect class="box err" x="470" y="692" width="15" height="11" rx="3"/>
+    <text x="490" y="701">failure</text>
+  </g>
+</svg>

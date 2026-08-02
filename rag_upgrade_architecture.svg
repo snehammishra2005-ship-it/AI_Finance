@@ -1,0 +1,77 @@
+<svg viewBox="0 0 900 540" xmlns="http://www.w3.org/2000/svg" style="color:#1f2937" role="img" aria-label="RAG ingest upgrade architecture">
+  <title>Area 2 — Document processing → LightRAG upgrades</title>
+  <defs>
+    <marker id="a1" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="currentColor" fill-opacity="0.55"/>
+    </marker>
+    <style>
+      .box{fill:none;stroke:currentColor;stroke-opacity:.28;}
+      .lbl{fill:currentColor;font-family:ui-sans-serif,system-ui,Segoe UI,Arial,sans-serif;font-weight:600;}
+      .sub{fill:currentColor;fill-opacity:.62;font-family:ui-sans-serif,system-ui,Segoe UI,Arial,sans-serif;}
+      .hdr{fill:currentColor;font-family:ui-sans-serif,system-ui,Segoe UI,Arial,sans-serif;font-weight:700;}
+      .flow{stroke:currentColor;stroke-opacity:.35;fill:none;}
+      .new{stroke:#2563eb;stroke-opacity:.85;}
+      .store{stroke:#1e8449;stroke-opacity:.8;}
+    </style>
+  </defs>
+  <rect x="0" y="0" width="900" height="540" fill="#ffffff"/>
+  <text x="450" y="28" text-anchor="middle" font-size="17" class="hdr">Area 2 — Document processing → LightRAG</text>
+
+  <rect class="box" x="300" y="46" width="300" height="32" rx="16"/>
+  <text x="450" y="66" text-anchor="middle" font-size="12" class="lbl">Extracted document text</text>
+  <line class="flow" x1="450" y1="78" x2="450" y2="94" marker-end="url(#a1)"/>
+
+  <rect class="box new" x="280" y="94" width="340" height="42" rx="7"/>
+  <text x="450" y="112" text-anchor="middle" font-size="12" class="lbl">★ Boilerplate stripping</text>
+  <text x="450" y="127" text-anchor="middle" font-size="9" class="sub">drop headers/footers repeated across pages</text>
+  <line class="flow" x1="450" y1="136" x2="450" y2="150" marker-end="url(#a1)"/>
+
+  <rect class="box new" x="280" y="150" width="340" height="42" rx="7"/>
+  <text x="450" y="168" text-anchor="middle" font-size="12" class="lbl">★ Structure-aware segmentation</text>
+  <text x="450" y="183" text-anchor="middle" font-size="9" class="sub">split char before Page / Table / Sheet markers</text>
+  <line class="flow" x1="450" y1="192" x2="450" y2="206" marker-end="url(#a1)"/>
+
+  <rect class="box new" x="280" y="206" width="340" height="42" rx="7"/>
+  <text x="450" y="224" text-anchor="middle" font-size="12" class="lbl">★ ainsert(split_by_character)</text>
+  <text x="450" y="239" text-anchor="middle" font-size="9" class="sub">chunks aligned to structure (fallback: plain insert)</text>
+  <line class="flow" x1="450" y1="248" x2="450" y2="262" marker-end="url(#a1)"/>
+
+  <rect class="box" x="250" y="262" width="400" height="38" rx="7"/>
+  <text x="450" y="280" text-anchor="middle" font-size="11.5" class="lbl">Chunks — a table stays whole</text>
+  <text x="450" y="293" text-anchor="middle" font-size="9" class="sub">structural marker rides along as provenance</text>
+
+  <line class="flow" x1="380" y1="300" x2="250" y2="322" marker-end="url(#a1)"/>
+  <line class="flow" x1="520" y1="300" x2="650" y2="322" marker-end="url(#a1)"/>
+
+  <rect class="box new" x="100" y="322" width="300" height="44" rx="7"/>
+  <text x="250" y="340" text-anchor="middle" font-size="11.5" class="lbl">★ Embed · bge-small-en-v1.5</text>
+  <text x="250" y="355" text-anchor="middle" font-size="9" class="sub">384-d, normalized (finance-tuned recall)</text>
+
+  <rect class="box" x="500" y="322" width="300" height="44" rx="7"/>
+  <text x="650" y="340" text-anchor="middle" font-size="11.5" class="lbl">Entity + relationship graph</text>
+  <text x="650" y="355" text-anchor="middle" font-size="9" class="sub">Groq llama-3.1-8b-instant</text>
+
+  <line class="flow" x1="250" y1="366" x2="410" y2="390" marker-end="url(#a1)"/>
+  <line class="flow" x1="650" y1="366" x2="490" y2="390" marker-end="url(#a1)"/>
+
+  <rect class="box store" x="320" y="390" width="260" height="42" rx="8"/>
+  <line class="store" x1="320" y1="400" x2="580" y2="400"/>
+  <text x="450" y="416" text-anchor="middle" font-size="11.5" class="lbl">Per-session vector + graph store</text>
+
+  <line class="flow" x1="400" y1="432" x2="250" y2="456" marker-end="url(#a1)"/>
+  <line class="flow" x1="500" y1="432" x2="650" y2="456" marker-end="url(#a1)"/>
+
+  <rect class="box" x="110" y="456" width="260" height="34" rx="7"/>
+  <text x="240" y="477" text-anchor="middle" font-size="11" class="lbl">/rag/ask · mode = mix</text>
+
+  <rect class="box new" x="530" y="456" width="260" height="34" rx="7"/>
+  <text x="660" y="472" text-anchor="middle" font-size="11" class="lbl">★ get_context</text>
+  <text x="660" y="484" text-anchor="middle" font-size="8.5" class="sub">only_need_context → feeds blend</text>
+
+  <g font-size="10" class="sub">
+    <rect class="box new" x="330" y="508" width="16" height="11" rx="3"/>
+    <text x="352" y="517">★ new in this upgrade</text>
+    <rect class="box store" x="486" y="508" width="16" height="11" rx="3"/>
+    <text x="508" y="517">store</text>
+  </g>
+</svg>

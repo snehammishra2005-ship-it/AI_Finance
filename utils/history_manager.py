@@ -26,9 +26,22 @@ def save_chat_history(messages, persona, slm):
     return str(file_path)
 
 
+def _derive_title(data):
+    """
+    Use the first user message as the chat's title (like ChatGPT), truncated.
+    Falls back to the timestamp if the chat has no user message yet.
+    """
+    for message in data.get("messages", []):
+        if message.get("role") == "user" and message.get("content"):
+            text = " ".join(message["content"].split())  # collapse whitespace
+            return text[:38] + "…" if len(text) > 38 else text
+    return data.get("timestamp", "Untitled chat")
+
+
 def load_all_histories():
     """
-    Loads metadata of all saved chat histories.
+    Loads metadata of all saved chat histories, including a `title` derived
+    from the first question in each chat.
     """
     histories = []
 
@@ -41,7 +54,8 @@ def load_all_histories():
                     "path": str(file),
                     "timestamp": data.get("timestamp"),
                     "persona": data.get("persona"),
-                    "slm": data.get("slm")
+                    "slm": data.get("slm"),
+                    "title": _derive_title(data),
                 })
         except Exception:
             continue

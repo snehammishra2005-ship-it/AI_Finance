@@ -1,0 +1,119 @@
+<svg viewBox="0 0 960 500" xmlns="http://www.w3.org/2000/svg" style="color:#1f2937" role="img" aria-label="Deep Research data flow diagram">
+  <title>Deep Research in Q&amp;A — Data Flow Diagram</title>
+  <defs>
+    <marker id="rd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="currentColor" fill-opacity="0.55"/>
+    </marker>
+    <style>
+      .lbl{fill:currentColor;font-family:ui-sans-serif,system-ui,Segoe UI,Arial,sans-serif;font-weight:600;}
+      .sub{fill:currentColor;fill-opacity:.6;font-family:ui-sans-serif,system-ui,Segoe UI,Arial,sans-serif;}
+      .hdr{fill:currentColor;font-family:ui-sans-serif,system-ui,Segoe UI,Arial,sans-serif;font-weight:700;}
+      .flow{stroke:currentColor;stroke-opacity:.4;fill:none;}
+      .fl{fill:currentColor;fill-opacity:.68;font-family:ui-sans-serif,system-ui,Segoe UI,Arial,sans-serif;font-size:8.5px;}
+      .entity{fill:none;stroke:#2563eb;stroke-opacity:.85;}
+      .proc{fill:none;stroke:currentColor;stroke-opacity:.35;}
+      .ext{fill:none;stroke:#5b6b7f;stroke-opacity:.7;}
+      .store{stroke:#1e8449;stroke-opacity:.85;}
+    </style>
+  </defs>
+  <rect x="0" y="0" width="960" height="500" fill="#ffffff"/>
+  <text x="480" y="28" text-anchor="middle" font-size="17" class="hdr">Deep Research in Q&amp;A — Data Flow Diagram</text>
+
+  <!-- User -->
+  <rect class="entity" x="24" y="196" width="104" height="90" rx="4"/>
+  <text x="76" y="246" text-anchor="middle" font-size="12" class="lbl">User</text>
+
+  <!-- /chat -->
+  <rect class="proc" x="188" y="200" width="120" height="80" rx="14"/>
+  <text x="248" y="234" text-anchor="middle" font-size="11" class="lbl">/chat</text>
+  <text x="248" y="249" text-anchor="middle" font-size="8" class="sub">orchestrates</text>
+
+  <!-- Web search process -->
+  <rect class="proc" x="378" y="86" width="140" height="56" rx="12"/>
+  <text x="448" y="110" text-anchor="middle" font-size="10.5" class="lbl">Web search</text>
+  <text x="448" y="124" text-anchor="middle" font-size="8" class="sub">iterative</text>
+
+  <!-- Tavily -->
+  <rect class="ext" x="580" y="60" width="120" height="40" rx="6"/>
+  <text x="640" y="84" text-anchor="middle" font-size="10" class="lbl">Tavily API</text>
+
+  <!-- Search cache -->
+  <line class="store" x1="580" y1="118" x2="700" y2="118"/>
+  <line class="store" x1="580" y1="150" x2="700" y2="150"/>
+  <line class="store" x1="580" y1="118" x2="580" y2="150"/>
+  <text x="640" y="138" text-anchor="middle" font-size="9.5" class="lbl">Search cache</text>
+
+  <!-- Doc retrieve process -->
+  <rect class="proc" x="378" y="200" width="140" height="56" rx="12"/>
+  <text x="448" y="224" text-anchor="middle" font-size="10.5" class="lbl">Doc retrieve</text>
+  <text x="448" y="238" text-anchor="middle" font-size="8" class="sub">get_context</text>
+
+  <!-- Per-session store -->
+  <line class="store" x1="378" y1="300" x2="518" y2="300"/>
+  <line class="store" x1="378" y1="332" x2="518" y2="332"/>
+  <line class="store" x1="378" y1="300" x2="378" y2="332"/>
+  <text x="448" y="320" text-anchor="middle" font-size="9.5" class="lbl">Per-session store</text>
+
+  <!-- Build + synthesize -->
+  <rect class="proc" x="590" y="196" width="150" height="88" rx="14"/>
+  <text x="665" y="228" text-anchor="middle" font-size="10.5" class="lbl">Build prompt</text>
+  <text x="665" y="244" text-anchor="middle" font-size="10.5" class="lbl">+ synthesize</text>
+  <text x="665" y="260" text-anchor="middle" font-size="8" class="sub">citations</text>
+
+  <!-- LLM APIs -->
+  <rect class="ext" x="810" y="200" width="128" height="80" rx="6"/>
+  <text x="874" y="232" text-anchor="middle" font-size="10" class="lbl">LLM provider</text>
+  <text x="874" y="246" text-anchor="middle" font-size="10" class="lbl">APIs</text>
+  <text x="874" y="262" text-anchor="middle" font-size="7.5" class="sub">+ fallback</text>
+
+  <!-- flows -->
+  <line class="flow" x1="128" y1="234" x2="188" y2="234" marker-end="url(#rd)"/>
+  <text x="130" y="226" class="fl">question + toggles</text>
+
+  <!-- /chat -> web search -->
+  <line class="flow" x1="308" y1="214" x2="378" y2="120" marker-end="url(#rd)"/>
+  <text x="312" y="160" class="fl">query</text>
+  <!-- web search <-> tavily -->
+  <line class="flow" x1="518" y1="100" x2="580" y2="84" marker-start="url(#rd)" marker-end="url(#rd)"/>
+  <text x="520" y="78" class="fl">search/results</text>
+  <!-- web search <-> cache -->
+  <line class="flow" x1="518" y1="124" x2="580" y2="132" marker-start="url(#rd)" marker-end="url(#rd)"/>
+  <text x="522" y="146" class="fl">cached</text>
+
+  <!-- /chat -> doc retrieve -->
+  <line class="flow" x1="308" y1="240" x2="378" y2="228" marker-end="url(#rd)"/>
+  <text x="316" y="256" class="fl">question</text>
+  <!-- store -> doc retrieve -->
+  <line class="flow" x1="448" y1="300" x2="448" y2="256" marker-end="url(#rd)"/>
+  <text x="452" y="284" class="fl">doc context</text>
+
+  <!-- web search -> synth -->
+  <path class="flow" d="M518 114 L665 114 L665 196" marker-end="url(#rd)"/>
+  <text x="540" y="108" class="fl">web results + sources</text>
+  <!-- doc retrieve -> synth -->
+  <line class="flow" x1="518" y1="228" x2="590" y2="234" marker-end="url(#rd)"/>
+  <text x="522" y="222" class="fl">context</text>
+  <!-- synth <-> LLM -->
+  <line class="flow" x1="740" y1="240" x2="810" y2="240" marker-start="url(#rd)" marker-end="url(#rd)"/>
+  <text x="744" y="232" class="fl">prompt/answer</text>
+
+  <!-- synth -> /chat -> user (return) -->
+  <path class="flow" d="M665 284 L665 360 L248 360 L248 280" marker-end="url(#rd)"/>
+  <text x="430" y="354" class="fl">cited answer + sources</text>
+  <path class="flow" d="M188 258 L150 258 L150 286" marker-end="url(#rd)"/>
+  <text x="120" y="300" class="fl">response</text>
+
+  <!-- legend -->
+  <g font-size="10" class="sub">
+    <rect class="entity" x="40" y="452" width="16" height="12" rx="2"/>
+    <text x="62" y="462">user</text>
+    <rect class="proc" x="120" y="452" width="16" height="12" rx="6"/>
+    <text x="142" y="462">process</text>
+    <rect class="ext" x="220" y="452" width="16" height="12" rx="3"/>
+    <text x="242" y="462">external service</text>
+    <line class="store" x1="360" y1="452" x2="376" y2="452"/>
+    <line class="store" x1="360" y1="464" x2="376" y2="464"/>
+    <line class="store" x1="360" y1="452" x2="360" y2="464"/>
+    <text x="382" y="462">data store</text>
+  </g>
+</svg>

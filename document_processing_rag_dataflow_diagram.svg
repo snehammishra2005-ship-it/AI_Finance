@@ -1,0 +1,107 @@
+<svg viewBox="0 0 980 520" xmlns="http://www.w3.org/2000/svg" style="color:#1f2937" role="img" aria-label="Document processing with RAG data flow diagram">
+  <title>Document Processing with RAG — Data Flow Diagram</title>
+  <defs>
+    <marker id="dd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="currentColor" fill-opacity="0.55"/>
+    </marker>
+    <style>
+      .lbl{fill:currentColor;font-family:ui-sans-serif,system-ui,Segoe UI,Arial,sans-serif;font-weight:600;}
+      .sub{fill:currentColor;fill-opacity:.6;font-family:ui-sans-serif,system-ui,Segoe UI,Arial,sans-serif;}
+      .hdr{fill:currentColor;font-family:ui-sans-serif,system-ui,Segoe UI,Arial,sans-serif;font-weight:700;}
+      .flow{stroke:currentColor;stroke-opacity:.4;fill:none;}
+      .fl{fill:currentColor;fill-opacity:.68;font-family:ui-sans-serif,system-ui,Segoe UI,Arial,sans-serif;font-size:8.5px;}
+      .entity{fill:none;stroke:#2563eb;stroke-opacity:.85;}
+      .proc{fill:none;stroke:currentColor;stroke-opacity:.35;}
+      .ext{fill:none;stroke:#5b6b7f;stroke-opacity:.7;}
+      .store{stroke:#1e8449;stroke-opacity:.85;}
+    </style>
+  </defs>
+  <rect x="0" y="0" width="980" height="520" fill="#ffffff"/>
+  <text x="490" y="28" text-anchor="middle" font-size="17" class="hdr">Document Processing with RAG — Data Flow Diagram</text>
+
+  <text x="60" y="70" font-size="10" class="sub" font-weight="700" letter-spacing="0.08em">INGEST</text>
+  <text x="60" y="360" font-size="10" class="sub" font-weight="700" letter-spacing="0.08em">QUERY</text>
+
+  <!-- User entity (shared) -->
+  <rect class="entity" x="24" y="180" width="104" height="120" rx="4"/>
+  <text x="76" y="244" text-anchor="middle" font-size="12" class="lbl">User</text>
+
+  <!-- INGEST lane -->
+  <rect class="proc" x="176" y="96" width="104" height="46" rx="12"/>
+  <text x="228" y="116" text-anchor="middle" font-size="10.5" class="lbl">/files</text>
+  <text x="228" y="130" text-anchor="middle" font-size="8" class="sub">read · cap · detect</text>
+
+  <rect class="proc" x="322" y="90" width="150" height="58" rx="12"/>
+  <text x="397" y="114" text-anchor="middle" font-size="10.5" class="lbl">FileProcessor</text>
+  <text x="397" y="128" text-anchor="middle" font-size="8" class="sub">extract · clean tables</text>
+
+  <rect class="ext" x="336" y="176" width="122" height="34" rx="6"/>
+  <text x="397" y="197" text-anchor="middle" font-size="9.5" class="lbl">Tesseract OCR</text>
+
+  <rect class="proc" x="540" y="90" width="150" height="58" rx="12"/>
+  <text x="615" y="114" text-anchor="middle" font-size="10.5" class="lbl">RAG ingest</text>
+  <text x="615" y="128" text-anchor="middle" font-size="8" class="sub">LightRAG · chunk</text>
+
+  <rect class="ext" x="512" y="176" width="98" height="34" rx="6"/>
+  <text x="561" y="193" text-anchor="middle" font-size="9" class="lbl">bge-small</text>
+  <text x="561" y="204" text-anchor="middle" font-size="7.5" class="sub">embeddings</text>
+
+  <rect class="ext" x="636" y="176" width="120" height="40" rx="6"/>
+  <text x="696" y="193" text-anchor="middle" font-size="9.5" class="lbl">Groq API</text>
+  <text x="696" y="206" text-anchor="middle" font-size="7.5" class="sub">graph + synthesis</text>
+
+  <!-- Store (data store, open-ended) -->
+  <line class="store" x1="810" y1="92" x2="956" y2="92"/>
+  <line class="store" x1="810" y1="150" x2="956" y2="150"/>
+  <line class="store" x1="810" y1="92" x2="810" y2="150"/>
+  <text x="883" y="114" text-anchor="middle" font-size="10" class="lbl">Per-session store</text>
+  <text x="883" y="128" text-anchor="middle" font-size="8" class="sub">vector · graph · doc-status</text>
+
+  <!-- ingest flows -->
+  <line class="flow" x1="128" y1="210" x2="176" y2="128" marker-end="url(#dd)"/>
+  <text x="120" y="176" class="fl">file bytes</text>
+  <line class="flow" x1="280" y1="119" x2="322" y2="119" marker-end="url(#dd)"/>
+  <text x="286" y="112" class="fl">text</text>
+  <line class="flow" x1="397" y1="148" x2="397" y2="176" marker-start="url(#dd)" marker-end="url(#dd)"/>
+  <text x="401" y="166" class="fl">image</text>
+  <line class="flow" x1="472" y1="119" x2="540" y2="119" marker-end="url(#dd)"/>
+  <text x="478" y="112" class="fl">clean text</text>
+  <line class="flow" x1="600" y1="148" x2="575" y2="176" marker-start="url(#dd)" marker-end="url(#dd)"/>
+  <text x="545" y="166" class="fl">chunks/vecs</text>
+  <line class="flow" x1="650" y1="148" x2="686" y2="176" marker-end="url(#dd)"/>
+  <text x="655" y="166" class="fl">entities</text>
+  <line class="flow" x1="690" y1="119" x2="810" y2="119" marker-end="url(#dd)"/>
+  <text x="720" y="112" class="fl">vectors + graph</text>
+
+  <!-- QUERY lane -->
+  <rect class="proc" x="322" y="384" width="150" height="56" rx="12"/>
+  <text x="397" y="408" text-anchor="middle" font-size="10.5" class="lbl">/rag/ask</text>
+  <text x="397" y="422" text-anchor="middle" font-size="8" class="sub">hybrid (mix) query</text>
+
+  <!-- user -> /rag/ask -->
+  <line class="flow" x1="128" y1="270" x2="322" y2="405" marker-end="url(#dd)"/>
+  <text x="150" y="360" class="fl">question</text>
+  <!-- /rag/ask -> user cited answer -->
+  <path class="flow" d="M322 428 L150 428 L150 300" marker-end="url(#dd)"/>
+  <text x="176" y="422" class="fl">cited answer</text>
+  <!-- store -> /rag/ask (elbow) -->
+  <path class="flow" d="M883 150 L883 412 L472 412" marker-end="url(#dd)"/>
+  <text x="600" y="406" class="fl">retrieved context</text>
+  <!-- /rag/ask <-> Groq (elbow) -->
+  <path class="flow" d="M472 396 L696 396 L696 216" marker-start="url(#dd)" marker-end="url(#dd)"/>
+  <text x="510" y="390" class="fl">context + question / answer</text>
+
+  <!-- legend -->
+  <g font-size="10" class="sub">
+    <rect class="entity" x="40" y="474" width="16" height="12" rx="2"/>
+    <text x="62" y="484">user</text>
+    <rect class="proc" x="120" y="474" width="16" height="12" rx="6"/>
+    <text x="142" y="484">process</text>
+    <rect class="ext" x="220" y="474" width="16" height="12" rx="3"/>
+    <text x="242" y="484">external service</text>
+    <line class="store" x1="360" y1="474" x2="376" y2="474"/>
+    <line class="store" x1="360" y1="486" x2="376" y2="486"/>
+    <line class="store" x1="360" y1="474" x2="360" y2="486"/>
+    <text x="382" y="484">data store</text>
+  </g>
+</svg>

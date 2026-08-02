@@ -1,0 +1,82 @@
+<svg viewBox="0 0 960 560" xmlns="http://www.w3.org/2000/svg" style="color:#1f2937" role="img" aria-label="Deep Research blend upgrade architecture">
+  <title>Area 3 — Deep Research: web + document blend</title>
+  <defs>
+    <marker id="a2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="currentColor" fill-opacity="0.55"/>
+    </marker>
+    <style>
+      .box{fill:none;stroke:currentColor;stroke-opacity:.28;}
+      .lbl{fill:currentColor;font-family:ui-sans-serif,system-ui,Segoe UI,Arial,sans-serif;font-weight:600;}
+      .sub{fill:currentColor;fill-opacity:.62;font-family:ui-sans-serif,system-ui,Segoe UI,Arial,sans-serif;}
+      .hdr{fill:currentColor;font-family:ui-sans-serif,system-ui,Segoe UI,Arial,sans-serif;font-weight:700;}
+      .flow{stroke:currentColor;stroke-opacity:.35;fill:none;}
+      .new{stroke:#2563eb;stroke-opacity:.85;}
+      .ext{stroke:#5b6b7f;stroke-opacity:.7;}
+      .out{stroke:#1e8449;stroke-opacity:.8;}
+    </style>
+  </defs>
+  <rect x="0" y="0" width="960" height="560" fill="#ffffff"/>
+  <text x="480" y="26" text-anchor="middle" font-size="17" class="hdr">Area 3 — Deep Research: web + document blend</text>
+
+  <rect class="box" x="330" y="44" width="300" height="32" rx="16"/>
+  <text x="480" y="64" text-anchor="middle" font-size="11.5" class="lbl">Question · web + documents ON</text>
+  <line class="flow" x1="480" y1="76" x2="480" y2="90" marker-end="url(#a2)"/>
+
+  <rect class="box new" x="360" y="90" width="240" height="30" rx="7"/>
+  <text x="480" y="110" text-anchor="middle" font-size="11.5" class="lbl">★ async /chat</text>
+
+  <line class="flow" x1="440" y1="120" x2="250" y2="150" marker-end="url(#a2)"/>
+  <line class="flow" x1="520" y1="120" x2="700" y2="150" marker-end="url(#a2)"/>
+
+  <!-- left: doc context -->
+  <rect class="box new" x="90" y="150" width="300" height="42" rx="7"/>
+  <text x="240" y="168" text-anchor="middle" font-size="11.5" class="lbl">★ get_context</text>
+  <text x="240" y="182" text-anchor="middle" font-size="9" class="sub">uploaded-document context (RAG)</text>
+
+  <!-- right: iterative search box -->
+  <rect class="box new" x="560" y="150" width="320" height="192" rx="8"/>
+  <text x="720" y="168" text-anchor="middle" font-size="11" class="lbl">★ iterative_web_search</text>
+
+  <rect class="box" x="585" y="180" width="270" height="28" rx="6"/>
+  <text x="720" y="198" text-anchor="middle" font-size="10.5" class="lbl">web_search(query)</text>
+  <line class="flow" x1="720" y1="208" x2="720" y2="220" marker-end="url(#a2)"/>
+  <rect class="box new" x="585" y="220" width="270" height="28" rx="6"/>
+  <text x="720" y="238" text-anchor="middle" font-size="10.5" class="lbl">★ model: one follow-up query</text>
+  <line class="flow" x1="720" y1="248" x2="720" y2="260" marker-end="url(#a2)"/>
+  <rect class="box" x="585" y="260" width="270" height="28" rx="6"/>
+  <text x="720" y="278" text-anchor="middle" font-size="10.5" class="lbl">web_search(follow-up)</text>
+  <line class="flow" x1="720" y1="288" x2="720" y2="300" marker-end="url(#a2)"/>
+  <rect class="box new" x="585" y="300" width="270" height="30" rx="6"/>
+  <text x="720" y="319" text-anchor="middle" font-size="10.5" class="lbl">★ merge · dedupe · re-rank</text>
+
+  <!-- Tavily external + tags -->
+  <rect class="box ext" x="585" y="150" width="0" height="0"/>
+  <text x="720" y="345" text-anchor="middle" font-size="8.5" class="sub">Tavily · recency ★ · trust ★ · cache ★</text>
+
+  <!-- blend -->
+  <line class="flow" x1="240" y1="192" x2="380" y2="378" marker-end="url(#a2)"/>
+  <line class="flow" x1="720" y1="342" x2="560" y2="378" marker-end="url(#a2)"/>
+
+  <rect class="box new" x="330" y="378" width="300" height="42" rx="7"/>
+  <text x="480" y="396" text-anchor="middle" font-size="11.5" class="lbl">★ build_blend_prompt</text>
+  <text x="480" y="410" text-anchor="middle" font-size="9" class="sub">document context + web results [1..n]</text>
+  <line class="flow" x1="480" y1="420" x2="480" y2="434" marker-end="url(#a2)"/>
+
+  <rect class="box new" x="330" y="434" width="300" height="42" rx="7"/>
+  <text x="480" y="452" text-anchor="middle" font-size="11.5" class="lbl">★ Synthesize · max_tokens = 1024</text>
+  <text x="480" y="466" text-anchor="middle" font-size="9" class="sub">provider fallback</text>
+  <line class="flow" x1="480" y1="476" x2="480" y2="488" marker-end="url(#a2)"/>
+
+  <rect class="box" x="330" y="488" width="300" height="28" rx="7"/>
+  <text x="480" y="506" text-anchor="middle" font-size="10.5" class="lbl">strip_invalid_citations</text>
+  <line class="flow" x1="630" y1="502" x2="720" y2="502" marker-end="url(#a2)"/>
+  <rect class="box out" x="720" y="486" width="180" height="32" rx="16"/>
+  <text x="810" y="506" text-anchor="middle" font-size="10.5" class="lbl">Cited answer + sources</text>
+
+  <g font-size="10" class="sub">
+    <rect class="box new" x="70" y="500" width="16" height="11" rx="3"/>
+    <text x="92" y="509">★ new</text>
+    <rect class="box out" x="150" y="500" width="16" height="11" rx="3"/>
+    <text x="172" y="509">answer</text>
+  </g>
+</svg>
