@@ -16,6 +16,7 @@ def inject_global_css():
         """
         <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200');
         :root {
             --bg-main: #17130d;
             --bg-sidebar: #1e180f;
@@ -174,17 +175,6 @@ def inject_global_css():
             display: none;
         }
 
-        /* Make the sidebar's content column fill the height and push the user
-           account row to the very bottom. */
-        section[data-testid="stSidebar"] [data-testid="stVerticalBlock"]:has(> [data-testid="stElementContainer"] .sidebar-user) {
-            display: flex;
-            flex-direction: column;
-            min-height: calc(100vh - 3.5rem);
-        }
-        section[data-testid="stSidebar"] [data-testid="stElementContainer"]:has(.sidebar-user) {
-            margin-top: auto;
-        }
-
         /* User account row at the bottom */
         .sidebar-user {
             display: flex;
@@ -207,20 +197,6 @@ def inject_global_css():
         .sidebar-user .who .name { font-size: 0.85rem; font-weight: 600; }
         .sidebar-user .who .plan { font-size: 0.72rem; color: var(--text-secondary); }
 
-        /* Hide Streamlit's sidebar collapse/expand control (the
-           "keyboard_double_arrow" chevrons) so the sidebar stays put. */
-        [data-testid="stSidebarCollapseButton"],
-        [data-testid="stSidebarCollapsedControl"],
-        [data-testid="stExpandSidebarButton"],
-        button[aria-label="Close sidebar"],
-        button[aria-label="Open sidebar"],
-        button[aria-label="Collapse sidebar"] {
-            display: none !important;
-        }
-
-        /* Pin the profile row to the very bottom of the sidebar: make the
-           sidebar's content column fill the height, then push the keyed user
-           dock down with an auto top margin. */
         /* Pin the profile row to the sidebar bottom: position it absolutely
            against the sidebar section (which is exactly the visible sidebar
            height), and reserve scroll room so recents don't hide behind it. */
