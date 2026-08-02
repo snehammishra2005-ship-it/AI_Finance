@@ -225,13 +225,13 @@ def inject_global_css():
             font-size: 0 !important;
         }
         [data-testid="stSidebarCollapseButton"] [data-testid="stIconMaterial"]::after {
-            content: "\00AB";
+            content: "«";
             font-size: 1.25rem;
             line-height: 1;
         }
         [data-testid="stExpandSidebarButton"] [data-testid="stIconMaterial"]::after,
         [data-testid="stSidebarCollapsedControl"] [data-testid="stIconMaterial"]::after {
-            content: "\00BB";
+            content: "»";
             font-size: 1.25rem;
             line-height: 1;
         }
