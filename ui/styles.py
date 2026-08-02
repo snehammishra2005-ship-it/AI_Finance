@@ -216,6 +216,26 @@ def inject_global_css():
             z-index: 5;
         }
 
+        /* Sidebar collapse/expand control: draw a double-chevron ourselves so
+           it never falls back to the raw "keyboard_double_arrow_*" ligature
+           text when the Material icon font is slow/unavailable. */
+        [data-testid="stSidebarCollapseButton"] [data-testid="stIconMaterial"],
+        [data-testid="stExpandSidebarButton"] [data-testid="stIconMaterial"],
+        [data-testid="stSidebarCollapsedControl"] [data-testid="stIconMaterial"] {
+            font-size: 0 !important;
+        }
+        [data-testid="stSidebarCollapseButton"] [data-testid="stIconMaterial"]::after {
+            content: "\00AB";
+            font-size: 1.25rem;
+            line-height: 1;
+        }
+        [data-testid="stExpandSidebarButton"] [data-testid="stIconMaterial"]::after,
+        [data-testid="stSidebarCollapsedControl"] [data-testid="stIconMaterial"]::after {
+            content: "\00BB";
+            font-size: 1.25rem;
+            line-height: 1;
+        }
+
         /* ================= MAIN AREA ================= */
         .chat-title {
             font-size: 1.05rem;
