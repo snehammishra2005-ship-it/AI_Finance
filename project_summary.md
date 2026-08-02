@@ -1,32 +1,77 @@
-# AI Finance Project Summary
+# AI in Finance — Project Summary
 
 ## Overview
-The application is a locally-hosted AI-powered financial assistant that allows users to chat with a Small Language Model (SLM) and process financial documents. The system follows a client-server architecture with a Streamlit frontend and a FastAPI backend.
+An AI-powered financial assistant with a Streamlit frontend and a FastAPI
+backend. Users chat with a finance-tuned assistant (with selectable personas),
+upload financial documents for RAG-based Q&A, run web-augmented research, and
+generate automated document-scoring and metric-extraction reports.
+
+The language models are **cloud-hosted APIs**, not a local model — there is no
+model download or GPU requirement. (An earlier prototype used a local
+`TinyLlama-1.1B` model via Transformers; the app no longer does, and the
+`transformers`/`torch` dependencies remain only for the local sentence-embedding
+model used by RAG.)
 
 ## Architecture
 
-### Backend (FastAPI)
-The backend service (`backend/main.py`) acts as the core engine, exposing RESTful API endpoints:
-- **`/chat`**: Processes incoming chat queries using an integrated SLM (`TinyLlama-1.1B`). Supports persona-based conversational models tailored for users like Students, Retirees, and General Users.
-- **`/files`**: Handles document uploads (CSV, PDF, TXT, DOCX, PPTX), parsing the files to extract text content which is returned to the frontend.
-- **`/analysis`**: Triggers a scoring engine to analyze extracted text using the SLM and generate a scored CSV report containing financial remarks.
+### Backend (FastAPI) — `backend/main.py`
+RESTful endpoints:
+- **`/chat`** — chat with the selected provider/persona. Supports multi-turn
+  history, optional Tavily **web search**, and a **blend** mode that grounds the
+  answer in both the session's uploaded documents and live web results (cited).
+- **`/files`** — upload + text extraction (PDF, DOCX, PPTX, XLSX/XLS, CSV, TXT,
+  and images via OCR), then per-session RAG indexing.
+- **`/rag/ask`** — question answering grounded strictly in the current session's
+  uploaded documents.
+- **`/rag/reprocess`** — retries documents whose indexing previously failed
+  (e.g. a provider rate limit).
+- **`/metrics`** — extracts explicitly-stated financial metrics as structured rows.
+- **`/analysis`** — scoring engine → CSV report (verification / validation /
+  explainability / persona-suitability + weighted system score).
 
-### Frontend (Streamlit)
-The frontend (`ui/app.py`) provides an interactive interface to interact with the backend services:
-- **Chat Interface (`ui/chat.py`)**: A chat window to converse with the AI assistant. Includes a file upload component.
-- **Sidebar (`ui/sidebar.py`)**: Allows users to select the SLM model, configure the assistant's persona, and manage conversational history (save/load previous chat sessions).
-- **Document Processing (`ui/file_upload.py`)**: A dedicated widget to upload financial documents. It uploads the file to the backend, caches the extracted text, and offers a button to run the "SLM Analysis".
-- **Analysis View**: Displays the results of the document analysis (scoring and remarks).
+### LLM routing — `backend/services/llm_service.py` + `api_providers.py`
+A single `LLMEngine` router dispatches to one of six providers and **falls back
+transparently** to the next configured provider if the selected one fails
+(e.g. a rate limit or billing error), so a single provider outage doesn't break
+chat. Providers: **Groq** (Llama 3.1 8B, default), **OpenRouter** (GPT-5.5),
+**Google** (Gemini 3 Flash, via the `google-genai` SDK), **Anthropic**
+(Claude 3 Haiku), **Cerebras** (GPT-OSS 120B), and **Mistral** (Mistral Small).
+Configured in `config/slm_config.py`; keys come from `.env`.
 
-## Key Features Implemented
-1. **Persona-driven AI Chat**: The assistant can adapt its tone and complexity based on predefined user personas.
-2. **Chat History Management**: State persistence for chats, enabling users to switch between or resume older conversations.
-3. **Multi-format Document Extraction**: Extract text from a variety of document formats.
-4. **Document Analysis & Scoring**: Generating automated scores and remarks on uploaded financial text.
+### RAG — `backend/services/rag/`
+LightRAG-based, with **per-session isolation** (each session has its own
+working dir + workspace), structure-aware chunking, table preservation,
+duplicate/replace handling, an LRU cache of active sessions, and a stale-session
+sweep. Embeddings use `BAAI/bge-small-en-v1.5` (384-d) run locally.
 
-## Next Steps
-To further improve the application, consider the following potential features:
-- **Authentication & User Accounts**: Implement proper user logins to secure the endpoint and provide individualized chat histories.
-- **Advanced RAG (Retrieval-Augmented Generation)**: Implement vector embeddings for document queries, allowing users to "chat" directly with their uploaded files instead of a generic backend scoring system.
-- **Data Visualization**: Enhance the `Analysis` tab to render charts or graphs based on the generated CSV data.
-- **Model Flexibility**: Allow dynamic loading/unloading of various HuggingFace models to compare results between different SLMs.
+### Frontend (Streamlit) — `ui/app.py`
+`ui/app.py` is the single entry point: it renders the UI **and** boots the
+backend as a child process if it isn't already running (guarded by a lock file).
+Components: chat (`ui/chat.py`), file upload + metric extraction
+(`ui/file_upload.py`), analysis view with a score chart (`ui/analysis_view.py`),
+sidebar with history (`ui/sidebar.py`), and an architecture view.
+
+## Key Features
+1. **Persona-driven chat** — selectable audience personas drive tone/length via a
+   style-guide system prompt layered on a safety-focused base prompt (accuracy
+   first, never invent numbers, educational-not-advice).
+2. **Multi-provider LLM routing** with automatic fallback.
+3. **Multi-format document extraction** with table preservation and OCR fallback.
+4. **Per-session RAG** document Q&A + web/document blend mode with cited sources.
+5. **Financial metric extraction** and **document scoring** with CSV export.
+6. **Chat history** save/load with first-question titles.
+
+## Testing
+Offline unit tests live in `tests/` (run `python -m unittest discover -s tests`).
+They cover the deterministic logic — parsing, formatting, file-type detection,
+prompt assembly, persona/history helpers, and config consistency — with no
+network calls or API keys required. Ad-hoc live smoke scripts (`verify_*.py`)
+exercise the real provider APIs.
+
+## Known Limitations
+- Two providers (Anthropic, Cerebras) may be out of API credit depending on the
+  account; fallback covers for them.
+- RAG and web-augmented answers have noticeable latency (multi-step retrieval +
+  synthesis on free tiers).
+- No authentication; intended for local/single-user use. Restrict CORS
+  (`CORS_ALLOW_ORIGINS`) and add auth before any shared deployment.

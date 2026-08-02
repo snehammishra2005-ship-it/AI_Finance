@@ -84,6 +84,49 @@ def render_sources(sources):
 
 
 # -------------------------------------------------
+# STREAMING (plain chat) — yields text chunks from /chat/stream
+# -------------------------------------------------
+def _stream_chat(payload):
+    """
+    Generator of text chunks from the backend's /chat/stream endpoint, for use
+    with st.write_stream. Uses an incremental UTF-8 decoder so a multi-byte
+    character (₹, €, £) split across two network chunks isn't mangled. All
+    failures are yielded as readable text so the chat bubble always shows
+    something rather than raising mid-render.
+    """
+    import codecs
+    decoder = codecs.getincrementaldecoder("utf-8")()
+    try:
+        with requests.post(
+            f"{BACKEND_BASE_URL}/chat/stream",
+            json=payload,
+            stream=True,
+            timeout=180,
+        ) as r:
+            if r.status_code != 200:
+                try:
+                    detail = r.json().get("detail", r.text)
+                except Exception:
+                    detail = r.text
+                yield f"⚠️ The model could not answer ({r.status_code}):\n\n{detail}"
+                return
+            for chunk in r.iter_content(chunk_size=None):
+                if chunk:
+                    text = decoder.decode(chunk)
+                    if text:
+                        yield text
+            tail = decoder.decode(b"", final=True)
+            if tail:
+                yield tail
+    except requests.exceptions.Timeout:
+        yield "⚠️ Request timed out.\n\nThe selected model may be taking too long to respond."
+    except requests.exceptions.ConnectionError:
+        yield "⚠️ Could not connect to backend.\n\nMake sure the FastAPI server is running."
+    except Exception as e:
+        yield f"⚠️ Unexpected Error:\n\n{e}"
+
+
+# -------------------------------------------------
 # Chat Renderer
 # -------------------------------------------------
 def render_chat():
@@ -112,6 +155,27 @@ def render_chat():
                 st.caption(f"ℹ️ {message['web_note']}")
             if message.get("caption"):
                 st.caption(message["caption"])
+
+    # =================================================
+    # STREAMING ASSISTANT REPLY (plain chat mode)
+    # The submit handler defers plain-chat answers by stashing a `pending_stream`
+    # payload and rerunning; this renders the assistant bubble in-flow (just
+    # below the latest message, above the composer) and streams tokens into it
+    # live. Once complete, the full text is persisted to messages and we rerun
+    # so it renders like any other saved turn.
+    # =================================================
+    pending = st.session_state.pop("pending_stream", None)
+    if pending:
+        with st.chat_message("assistant"):
+            full_text = st.write_stream(_stream_chat(pending))
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": full_text,
+            "sources": [],
+            "web_note": None,
+            "caption": f"🤖 Model Used: {pending.get('slm_model')}",
+        })
+        st.rerun()
 
     # =================================================
     # COMPOSER DOCK  —  [ + attach ] [ input ] [ send ]  + toggles below
@@ -197,6 +261,29 @@ def render_chat():
         else:
             mode = "chat"
 
+        # Prior turns (everything before the message just added) so the
+        # assistant has conversation memory; capped to bound tokens.
+        history = [
+            {"role": m["role"], "content": m["content"]}
+            for m in st.session_state.messages[:-1]
+        ][-8:]
+
+        # -------- Plain chat: stream the reply (deferred to next run) --------
+        # Stash the request and rerun; the streaming block above renders the
+        # assistant bubble and streams tokens into it, avoiding a blocking
+        # spinner and showing text as it arrives.
+        if mode == "chat":
+            st.session_state.pending_stream = {
+                "message": user_input,
+                "persona": persona,
+                "slm_model": slm,
+                "web_search": False,
+                "use_documents": False,
+                "session_id": st.session_state.get("session_id", "default"),
+                "history": history,
+            }
+            st.rerun()
+
         spinner_text = {
             "web": "Searching the web...",
             "blend": "Searching your documents + the web...",
@@ -220,14 +307,9 @@ def render_chat():
                         timeout=120
                     )
                 else:
-                    # Prior turns (everything before the message just added) so
-                    # the assistant has conversation memory. Cap to the last
-                    # few to bound tokens; send role + content only.
-                    history = [
-                        {"role": m["role"], "content": m["content"]}
-                        for m in st.session_state.messages[:-1]
-                    ][-8:]
-
+                    # Web / blend modes keep the synchronous JSON path (they need
+                    # source lists + citation post-processing). `history` was
+                    # computed above.
                     response = requests.post(
                         url=f"{BACKEND_BASE_URL}/chat",
                         json={

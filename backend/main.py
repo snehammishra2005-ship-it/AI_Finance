@@ -10,6 +10,7 @@ This backend handles:
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
 import logging
@@ -35,7 +36,7 @@ load_dotenv()
 from config.settings import APP_NAME, APP_VERSION
 from backend.services.file_processor import FileProcessor
 from backend.services.scoring_engine import ScoringEngine
-from backend.services.llm_service import llm_engine
+from backend.services.llm_service import llm_engine, advice_safety_note
 from backend.services.api_providers import LLMProviderError
 from backend.services.rag.rag_service import rag_service_manager
 from backend.services.metric_extractor import extract_financial_metrics
@@ -87,9 +88,23 @@ app = FastAPI(
 # -------------------------------------------------
 # CORS Middleware
 # -------------------------------------------------
+# The old config (allow_origins=["*"] together with allow_credentials=True) is
+# both unsafe and self-contradictory - browsers reject a wildcard origin when
+# credentials are allowed. Default to the local Streamlit origins the frontend
+# actually uses, and let a deployment widen this via CORS_ALLOW_ORIGINS
+# (comma-separated) without editing code.
+import os as _os
+
+_default_origins = "http://localhost:8501,http://127.0.0.1:8501"
+_cors_origins = [
+    o.strip()
+    for o in _os.getenv("CORS_ALLOW_ORIGINS", _default_origins).split(",")
+    if o.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -243,6 +258,51 @@ async def chat_endpoint(request: ChatRequest):
     except Exception as e:
         logger.error(f"Chat logic failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/chat/stream")
+async def chat_stream_endpoint(request: ChatRequest):
+    """
+    Streaming variant of /chat for the plain chat path (no web search / no
+    document grounding - those need post-processing like citation handling and
+    source lists, so they stay on the JSON /chat endpoint). Streams the answer
+    as text/plain chunks so the UI can render tokens as they arrive instead of
+    waiting for the whole response.
+
+    Errors are yielded as text inside the stream (rather than raised) because
+    the HTTP 200 + headers are already committed once streaming begins.
+    """
+    # Same history sanitation as /chat.
+    history = [
+        {"role": m["role"], "content": str(m["content"])}
+        for m in (request.history or [])
+        if isinstance(m, dict)
+        and m.get("role") in ("user", "assistant")
+        and m.get("content")
+    ][-MAX_HISTORY_MESSAGES:]
+
+    def _generate():
+        collected = []
+        try:
+            for piece in llm_engine.stream_response_with_model(
+                request.message, request.persona, request.slm_model,
+                CHAT_MAX_TOKENS, history,
+            ):
+                collected.append(piece)
+                yield piece
+            # Backstop: if a personal-advice question got flattened to a bare
+            # yes/no, append the required educational framing after the stream.
+            note = advice_safety_note(request.message, "".join(collected))
+            if note:
+                yield f"\n\n{note}"
+        except LLMProviderError as e:
+            logger.error(f"Chat stream provider failure: {e}")
+            yield f"\n\n⚠️ The model could not answer: {e}"
+        except Exception as e:
+            logger.error(f"Chat stream failed: {e}")
+            yield f"\n\n⚠️ Unexpected error: {e}"
+
+    return StreamingResponse(_generate(), media_type="text/plain; charset=utf-8")
+
 
 @app.post("/files")
 async def file_processing_endpoint(

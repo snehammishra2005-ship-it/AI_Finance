@@ -42,31 +42,19 @@ DEFAULT_SLM = "Llama 3.1 8B Instant (Groq)"
 # -------------------------------------------------
 # File Upload Settings
 # -------------------------------------------------
-ALLOWED_FILE_TYPES = ["csv", "pdf", "txt"]
-MAX_UPLOAD_SIZE_MB = 10
-
-# -------------------------------------------------
-# CSV Analysis Settings
-# -------------------------------------------------
-ANALYSIS_CSV_COLUMNS = [
-    "Model Name",
-    "Data Verification Score",
-    "Data Validation Score",
-    "Explainability Score",
-    "Persona Suitability",
-    "Overall System Score",
-    "Remarks"
+# Kept in sync with what FileProcessor actually accepts and with the backend's
+# real MAX_UPLOAD_BYTES cap (see backend/main.py). These are the source of
+# truth for the UI file_uploader's accepted types.
+ALLOWED_FILE_TYPES = [
+    "pdf", "docx", "pptx", "xlsx", "xls", "csv", "txt",
+    "png", "jpg", "jpeg", "tiff", "tif", "bmp", "webp", "gif",
 ]
+MAX_UPLOAD_SIZE_MB = 25
 
-# -------------------------------------------------
-# Scoring Weights (Phase-2 ready)
-# -------------------------------------------------
-SCORING_WEIGHTS = {
-    "verification": 0.2,
-    "validation": 0.2,
-    "explainability": 0.3,
-    "persona_fit": 0.3
-}
+# NOTE: The document-scoring dimensions and their weights live in
+# ScoringEngine._WEIGHTS (backend/services/scoring_engine.py), which is the
+# single source of truth. They are intentionally NOT duplicated here to avoid
+# the two drifting apart.
 
 # -------------------------------------------------
 # Backend (FastAPI) Settings

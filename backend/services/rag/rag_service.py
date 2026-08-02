@@ -217,15 +217,17 @@ class RAGService:
 
         await self.initialize()
 
-        answer = await self.rag.aquery(
-
-            question,
-
-            param=QueryParam(
-                mode="mix"
+        # No rerank model is configured in this deployment, so disable
+        # reranking explicitly - otherwise LightRAG logs a "Rerank is enabled
+        # but no rerank model is configured" warning on every query. Retrieval
+        # still uses graph + vector (mix) recall. Fall back gracefully if an
+        # older LightRAG build doesn't accept the enable_rerank parameter.
+        try:
+            answer = await self.rag.aquery(
+                question, param=QueryParam(mode="mix", enable_rerank=False)
             )
-
-        )
+        except TypeError:
+            answer = await self.rag.aquery(question, param=QueryParam(mode="mix"))
 
         return answer
 
@@ -240,11 +242,15 @@ class RAGService:
         try:
             ctx = await self.rag.aquery(
                 question,
-                param=QueryParam(mode="mix", only_need_context=True),
+                param=QueryParam(
+                    mode="mix", only_need_context=True, enable_rerank=False
+                ),
             )
         except TypeError:
             # Older LightRAG without only_need_context: fall back to the answer.
-            ctx = await self.rag.aquery(question, param=QueryParam(mode="mix"))
+            ctx = await self.rag.aquery(
+                question, param=QueryParam(mode="mix", enable_rerank=False)
+            )
         return ctx or ""
 
 

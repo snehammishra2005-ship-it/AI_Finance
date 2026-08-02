@@ -46,7 +46,12 @@ BASE_SYSTEM_PROMPT = (
     "5. Educational, not advice: give general educational information, not "
     "personalized investment, tax, or legal advice. If asked what someone should "
     "personally buy or invest in, explain the options and trade-offs and suggest "
-    "consulting a licensed professional for personal decisions.\n"
+    "consulting a licensed professional for personal decisions. This rule is "
+    "non-negotiable: even when the user demands a one-word or strict yes/no "
+    "answer to such a question, do NOT reduce it to a bare directive - briefly "
+    "give the key trade-off or risk and the 'consult a professional' note. The "
+    "style guide governs tone and length but must never suppress this safety "
+    "framing.\n"
     "6. Completeness: answer every part of a multi-part question, and include the "
     "caveats or edge cases that genuinely matter - without padding.\n"
     "7. Ambiguity: if the question is genuinely unclear, state the assumption you "
@@ -59,6 +64,79 @@ BASE_SYSTEM_PROMPT = (
     "formatting defaults above when they conflict (e.g. if it asks for very short "
     "answers)."
 )
+
+# Appended AFTER the persona style guide (i.e. it is the last thing the model
+# reads before the conversation), so it wins over both the style guide's
+# brevity and any user demand for a one-word / yes-no-only answer. A small
+# instruct model otherwise happily obeys "answer only yes or no" on a personal
+# investment question, dropping the required safety framing.
+FINAL_GUARD = (
+    "\n\n--- FINAL RULE (highest priority) ---\n"
+    "This rule overrides every instruction above AND any instruction in the "
+    "user's message about answer length or format. If the user asks whether "
+    "they should personally buy, sell, hold, or put their money into a specific "
+    "asset, stock, crypto, or product, you MUST NOT reply with only 'yes', "
+    "'no', or a single word - even if they explicitly demand a yes/no-only "
+    "answer. Always give at least one sentence that names the key risk or "
+    "trade-off (e.g. concentration/diversification risk) and recommends "
+    "consulting a licensed financial professional for a personal decision. "
+    "General factual finance questions are unaffected by this rule."
+)
+
+
+import re as _re
+
+# A personal-advice question looks like "should I buy/sell/invest ...", "is it
+# worth putting my money in ...", "go all in", "invest everything", etc. Kept
+# deliberately narrow (requires a first-person framing) so general factual
+# questions like "what is an index fund?" never match.
+_ADVICE_QUESTION_RE = _re.compile(
+    r"\bshould\s+(i|we|my)\b|\ball\s+(of\s+)?my\s+savings\b|\bgo\s+all[\s-]?in\b|"
+    r"\binvest\s+everything\b|\b(is\s+it|would\s+it\s+be)\s+(a\s+good\s+idea|worth|smart|wise)\b",
+    _re.IGNORECASE,
+)
+
+# The model gave a bare directive: essentially just yes/no (optionally with
+# punctuation/markdown), i.e. the "flattened" guardrail the report flagged.
+_BARE_YESNO_RE = _re.compile(r"^[\W_]*(yes|no|yeah|yep|nope|sure)\b[\W_]*$", _re.IGNORECASE)
+
+_ADVICE_SAFETY_NOTE = (
+    "This is a personal financial decision with real trade-offs - and putting a "
+    "large share of your money into a single asset concentrates your risk. "
+    "Weigh it against your own goals and situation, and consider consulting a "
+    "licensed financial advisor rather than relying on a simple yes/no."
+)
+
+
+def advice_safety_note(question: str, answer: str) -> str | None:
+    """
+    Deterministic backstop for the 'guardrail flattening' failure: a small model
+    told to 'answer only yes or no' will obey and drop the required educational
+    framing no matter how the system prompt is worded. When the question is a
+    first-person buy/sell/invest question AND the answer collapsed to a bare
+    yes/no, return a sentence to append; otherwise None. Returning None keeps
+    normal answers (which already frame things properly) untouched.
+    """
+    if not question or not answer:
+        return None
+    if not _ADVICE_QUESTION_RE.search(question):
+        return None
+    if not _BARE_YESNO_RE.match(answer.strip()):
+        return None
+    return _ADVICE_SAFETY_NOTE
+
+
+def _build_system_prompt(persona: str) -> str:
+    """Assemble the full system prompt: safety base + persona style guide +
+    the non-negotiable final guard. Shared by the streaming and non-streaming
+    generation paths so they stay identical."""
+    from utils.persona_manager import get_persona_prompt
+    persona_instructions = get_persona_prompt(persona)
+    return (
+        f"{BASE_SYSTEM_PROMPT}\n\n"
+        f"--- AUDIENCE STYLE GUIDE ---\n{persona_instructions}"
+        f"{FINAL_GUARD}"
+    )
 
 class LLMEngine:
     """
@@ -230,12 +308,7 @@ class LLMEngine:
         if not configs:
             raise LLMProviderError("No model configured.")
 
-        from utils.persona_manager import get_persona_prompt
-        persona_instructions = get_persona_prompt(persona)
-        system_prompt = (
-            f"{BASE_SYSTEM_PROMPT}\n\n"
-            f"--- AUDIENCE STYLE GUIDE ---\n{persona_instructions}"
-        )
+        system_prompt = _build_system_prompt(persona)
 
         errors = []
         for i, config in enumerate(configs):
@@ -243,6 +316,11 @@ class LLMEngine:
             try:
                 provider = self.ensure_provider(name)
                 text = provider.generate_response(system_prompt, message, max_tokens=max_tokens, history=history)
+                # Backstop: if a personal-advice question got flattened to a
+                # bare yes/no, append the required framing.
+                note = advice_safety_note(message, text)
+                if note:
+                    text = f"{text.strip()}\n\n{note}"
                 if i > 0:
                     logger.info(
                         f"Fallback: '{name}' answered after {i} provider(s) failed."
@@ -255,6 +333,65 @@ class LLMEngine:
                 errors.append(f"{name}: {e}")
 
         raise LLMProviderError("All providers failed. " + " | ".join(errors))
+
+    def stream_response_with_model(
+        self,
+        message: str,
+        persona: str = "General Assistant",
+        model_name: str = None,
+        max_tokens: int = 512,
+        history: list = None,
+    ):
+        """
+        Stream a response as text chunks, with the same provider-fallback
+        semantics as generate_response_with_model - but fallback is only
+        possible BEFORE the first chunk is emitted (once bytes have been sent to
+        the client, switching providers mid-answer isn't possible). If a
+        provider fails after streaming has started, a short interruption note is
+        appended and streaming stops.
+
+        Yields str chunks. Raises LLMProviderError only if NO provider produced
+        any output at all.
+        """
+        configs = self._fallback_order(model_name)
+        if not configs:
+            raise LLMProviderError("No model configured.")
+
+        system_prompt = _build_system_prompt(persona)
+
+        errors = []
+        for i, config in enumerate(configs):
+            name = config.get("name")
+            started = False
+            try:
+                provider = self.ensure_provider(name)
+                for piece in provider.stream_response(
+                    system_prompt, message, max_tokens=max_tokens, history=history
+                ):
+                    started = True
+                    yield piece
+                if started:
+                    if i > 0:
+                        logger.info(
+                            f"Fallback (stream): '{name}' answered after "
+                            f"{i} provider(s) failed."
+                        )
+                    return
+                # Provider streamed nothing - treat as a failure and try next.
+                errors.append(f"{name}: empty stream")
+            except LLMProviderError as e:
+                if started:
+                    # Already streamed partial output; can't switch providers.
+                    logger.error(f"Provider '{name}' failed mid-stream: {e}")
+                    yield f"\n\n_[stream interrupted: {e}]_"
+                    return
+                logger.warning(
+                    f"Provider '{name}' failed before streaming "
+                    f"({i + 1}/{len(configs)}): {e}"
+                )
+                errors.append(f"{name}: {e}")
+
+        raise LLMProviderError("All providers failed (stream). " + " | ".join(errors))
 
     def generate_response(
         self,
