@@ -60,6 +60,12 @@ def inject_global_css():
             font-family: "Space Grotesk", "Inter", -apple-system,
                 "Segoe UI", sans-serif !important;
         }
+        /* Restore Material Symbols on icon glyphs — the blanket Inter rule
+           above otherwise turns Streamlit's icons into their ligature text
+           (e.g. "keyboard_double_arrow_left" on the sidebar toggle). */
+        [data-testid="stIconMaterial"] {
+            font-family: "Material Symbols Rounded" !important;
+        }
 
         /* ---- Surfaces ---- */
         [data-testid="stAppViewContainer"],
@@ -168,13 +174,23 @@ def inject_global_css():
             display: none;
         }
 
-        /* User account row pinned near the bottom */
+        /* Make the sidebar's content column fill the height and push the user
+           account row to the very bottom. */
+        section[data-testid="stSidebar"] [data-testid="stVerticalBlock"]:has(> [data-testid="stElementContainer"] .sidebar-user) {
+            display: flex;
+            flex-direction: column;
+            min-height: calc(100vh - 3.5rem);
+        }
+        section[data-testid="stSidebar"] [data-testid="stElementContainer"]:has(.sidebar-user) {
+            margin-top: auto;
+        }
+
+        /* User account row at the bottom */
         .sidebar-user {
             display: flex;
             align-items: center;
             gap: 0.6rem;
             padding: 0.5rem 0.5rem;
-            margin-top: 0.6rem;
             border-radius: 12px;
         }
         .sidebar-user:hover { background: var(--bg-hover); }
@@ -190,6 +206,39 @@ def inject_global_css():
         .sidebar-user .who { line-height: 1.15; overflow: hidden; }
         .sidebar-user .who .name { font-size: 0.85rem; font-weight: 600; }
         .sidebar-user .who .plan { font-size: 0.72rem; color: var(--text-secondary); }
+
+        /* Hide Streamlit's sidebar collapse/expand control (the
+           "keyboard_double_arrow" chevrons) so the sidebar stays put. */
+        [data-testid="stSidebarCollapseButton"],
+        [data-testid="stSidebarCollapsedControl"],
+        [data-testid="stExpandSidebarButton"],
+        button[aria-label="Close sidebar"],
+        button[aria-label="Open sidebar"],
+        button[aria-label="Collapse sidebar"] {
+            display: none !important;
+        }
+
+        /* Pin the profile row to the very bottom of the sidebar: make the
+           sidebar's content column fill the height, then push the keyed user
+           dock down with an auto top margin. */
+        /* Pin the profile row to the sidebar bottom: position it absolutely
+           against the sidebar section (which is exactly the visible sidebar
+           height), and reserve scroll room so recents don't hide behind it. */
+        section[data-testid="stSidebar"] { position: relative; }
+        section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"] {
+            padding-bottom: 3rem;
+        }
+        .st-key-sidebar_user_dock {
+            position: absolute !important;
+            left: 0.9rem !important;
+            right: 0.9rem !important;
+            bottom: 10px !important;
+            top: auto !important;
+            height: auto !important;
+            min-height: 0 !important;
+            flex-grow: 0 !important;
+            z-index: 5;
+        }
 
         /* ================= MAIN AREA ================= */
         .chat-title {

@@ -96,9 +96,8 @@ def render_sidebar():
         else:
             for history in histories:
 
-                history_label = (
-                    f"{history['timestamp']} · {history['persona']}"
-                )
+                # Title = the chat's first question (falls back to timestamp).
+                history_label = history.get("title") or history["timestamp"]
 
                 st.button(
                     label=history_label,
@@ -110,16 +109,18 @@ def render_sidebar():
 
         # =================================================
         # USER ACCOUNT ROW (decorative - the app has no auth)
+        # Keyed container so CSS can pin it to the very bottom of the sidebar.
         # =================================================
-        st.markdown(
-            """
-            <div class='sidebar-user'>
-                <div class='avatar'>AF</div>
-                <div class='who'>
-                    <div class='name'>AI in Finance</div>
-                    <div class='plan'>Local build</div>
+        with st.container(key="sidebar_user_dock"):
+            st.markdown(
+                """
+                <div class='sidebar-user'>
+                    <div class='avatar'>AF</div>
+                    <div class='who'>
+                        <div class='name'>AI in Finance</div>
+                        <div class='plan'>Local build</div>
+                    </div>
                 </div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+                """,
+                unsafe_allow_html=True
+            )
