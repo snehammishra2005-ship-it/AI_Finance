@@ -56,7 +56,9 @@ class RAGService:
     across sessions even though each writes to a separate working_dir file.
     """
 
-    def __init__(self, working_dir: str, workspace: str):
+    def __init__(self, working_dir: str, workspace: str,
+                 llm_model_func=groq_complete,
+                 llm_model_name: str = "llama-3.1-8b-instant"):
 
         os.makedirs(working_dir, exist_ok=True)
 
@@ -64,8 +66,11 @@ class RAGService:
             working_dir=working_dir,
             workspace=workspace,
 
-            llm_model_func=groq_complete,
-            llm_model_name="llama-3.1-8b-instant",
+            # Defaults preserve the production behaviour (Groq). They can be
+            # overridden to run the whole RAG pipeline on another provider - used
+            # by the per-model evaluation harness.
+            llm_model_func=llm_model_func,
+            llm_model_name=llm_model_name,
 
             embedding_func=embedding_model,
 
