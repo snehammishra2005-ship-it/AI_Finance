@@ -1,0 +1,101 @@
+<svg viewBox="0 0 700 760" xmlns="http://www.w3.org/2000/svg" style="color:#1f2937" role="img" aria-label="RAG implementation activity diagram">
+  <title>RAG Implementation — Activity Diagram</title>
+  <defs>
+    <marker id="ra" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="currentColor" fill-opacity="0.55"/>
+    </marker>
+    <style>
+      .box{fill:none;stroke:currentColor;stroke-opacity:.3;}
+      .lbl{fill:currentColor;font-family:ui-sans-serif,system-ui,Segoe UI,Arial,sans-serif;font-weight:600;}
+      .sub{fill:currentColor;fill-opacity:.6;font-family:ui-sans-serif,system-ui,Segoe UI,Arial,sans-serif;}
+      .hdr{fill:currentColor;font-family:ui-sans-serif,system-ui,Segoe UI,Arial,sans-serif;font-weight:700;}
+      .ph{fill:currentColor;fill-opacity:.5;font-family:ui-sans-serif,system-ui,Segoe UI,Arial,sans-serif;font-weight:700;letter-spacing:.08em;}
+      .flow{stroke:currentColor;stroke-opacity:.4;fill:none;}
+      .term{stroke:#1e8449;}
+      .dec{stroke:#b7791f;}
+      .err{stroke:#c0392b;}
+      .store{stroke:#1e8449;}
+      .elab{fill:currentColor;fill-opacity:.6;font-family:ui-sans-serif,system-ui,Segoe UI,Arial,sans-serif;font-size:10px;}
+    </style>
+  </defs>
+  <rect x="0" y="0" width="700" height="760" fill="#ffffff"/>
+  <text x="350" y="26" text-anchor="middle" font-size="16" class="hdr">RAG Implementation — Activity Diagram</text>
+
+  <text x="40" y="52" font-size="10.5" class="ph">INGEST</text>
+
+  <rect class="box term" x="215" y="44" width="270" height="30" rx="15"/>
+  <text x="350" y="63" text-anchor="middle" font-size="11.5" class="lbl">Extracted document text</text>
+  <line class="flow" x1="350" y1="74" x2="350" y2="90" marker-end="url(#ra)"/>
+
+  <rect class="box" x="200" y="90" width="300" height="32" rx="7"/>
+  <text x="350" y="110" text-anchor="middle" font-size="11" class="lbl">Replace same-name · skip duplicate</text>
+  <line class="flow" x1="350" y1="122" x2="350" y2="138" marker-end="url(#ra)"/>
+
+  <rect class="box" x="200" y="138" width="300" height="36" rx="7"/>
+  <text x="350" y="156" text-anchor="middle" font-size="11" class="lbl">Structure-aware chunk</text>
+  <text x="350" y="168" text-anchor="middle" font-size="8.5" class="sub">ainsert(split_by_character) · fallback plain</text>
+  <line class="flow" x1="350" y1="174" x2="260" y2="192" marker-end="url(#ra)"/>
+  <line class="flow" x1="350" y1="174" x2="440" y2="192" marker-end="url(#ra)"/>
+
+  <rect class="box" x="90" y="192" width="230" height="36" rx="7"/>
+  <text x="205" y="210" text-anchor="middle" font-size="11" class="lbl">Embed · bge-small</text>
+  <text x="205" y="222" text-anchor="middle" font-size="8.5" class="sub">384-d, normalized</text>
+
+  <rect class="box" x="380" y="192" width="230" height="36" rx="7"/>
+  <text x="495" y="210" text-anchor="middle" font-size="11" class="lbl">Entities + graph · Groq</text>
+  <text x="495" y="222" text-anchor="middle" font-size="8.5" class="sub">llama-3.1-8b-instant</text>
+
+  <line class="flow" x1="205" y1="228" x2="310" y2="250" marker-end="url(#ra)"/>
+  <line class="flow" x1="495" y1="228" x2="390" y2="250" marker-end="url(#ra)"/>
+
+  <rect class="box store" x="230" y="250" width="240" height="40" rx="8"/>
+  <line class="store" x1="230" y1="260" x2="470" y2="260"/>
+  <text x="350" y="270" text-anchor="middle" font-size="11" class="lbl">Per-session store</text>
+  <text x="350" y="282" text-anchor="middle" font-size="8.5" class="sub">vector · graph · doc-status</text>
+  <line class="flow" x1="350" y1="290" x2="350" y2="306" marker-end="url(#ra)"/>
+
+  <polygon class="box dec" points="350,306 470,344 350,382 230,344"/>
+  <text x="350" y="348" text-anchor="middle" font-size="11" class="lbl">Indexed OK?</text>
+  <line class="flow" x1="470" y1="344" x2="540" y2="344" marker-end="url(#ra)"/>
+  <text x="480" y="338" class="elab">No</text>
+  <rect class="box err" x="540" y="326" width="150" height="36" rx="10"/>
+  <text x="615" y="343" text-anchor="middle" font-size="9.5" class="lbl">Report error</text>
+  <text x="615" y="355" text-anchor="middle" font-size="8" class="sub">retry /rag/reprocess</text>
+  <line class="flow" x1="350" y1="382" x2="350" y2="398" marker-end="url(#ra)"/>
+  <text x="362" y="396" class="elab">Yes</text>
+
+  <rect class="box term" x="235" y="398" width="230" height="30" rx="15"/>
+  <text x="350" y="417" text-anchor="middle" font-size="11" class="lbl">Document searchable</text>
+
+  <line class="flow" x1="350" y1="428" x2="350" y2="452"/>
+  <text x="40" y="474" font-size="10.5" class="ph">QUERY</text>
+
+  <rect class="box term" x="245" y="458" width="210" height="30" rx="15"/>
+  <text x="350" y="477" text-anchor="middle" font-size="11.5" class="lbl">User question</text>
+  <line class="flow" x1="350" y1="488" x2="350" y2="504" marker-end="url(#ra)"/>
+
+  <rect class="box" x="255" y="504" width="190" height="28" rx="7"/>
+  <text x="350" y="522" text-anchor="middle" font-size="11" class="lbl">POST /rag/ask</text>
+  <line class="flow" x1="350" y1="532" x2="350" y2="548" marker-end="url(#ra)"/>
+
+  <polygon class="box dec" points="350,548 480,586 350,624 220,586"/>
+  <text x="350" y="582" text-anchor="middle" font-size="10.5" class="lbl">Session has</text>
+  <text x="350" y="595" text-anchor="middle" font-size="10.5" class="lbl">documents?</text>
+  <line class="flow" x1="480" y1="586" x2="550" y2="586" marker-end="url(#ra)"/>
+  <text x="490" y="580" class="elab">No</text>
+  <rect class="box" x="550" y="568" width="140" height="36" rx="7"/>
+  <text x="620" y="590" text-anchor="middle" font-size="9.5" class="lbl">Reply: upload first</text>
+  <line class="flow" x1="350" y1="624" x2="350" y2="640" marker-end="url(#ra)"/>
+  <text x="362" y="638" class="elab">Yes</text>
+
+  <rect class="box" x="230" y="640" width="240" height="30" rx="7"/>
+  <text x="350" y="659" text-anchor="middle" font-size="11" class="lbl">aquery · mode = mix (vector + graph)</text>
+  <line class="flow" x1="350" y1="670" x2="350" y2="684" marker-end="url(#ra)"/>
+
+  <rect class="box" x="230" y="684" width="240" height="28" rx="7"/>
+  <text x="350" y="702" text-anchor="middle" font-size="10.5" class="lbl">Synthesize + cite · Groq → strip [no-context]</text>
+  <line class="flow" x1="350" y1="712" x2="350" y2="726" marker-end="url(#ra)"/>
+
+  <rect class="box term" x="235" y="726" width="230" height="30" rx="15"/>
+  <text x="350" y="745" text-anchor="middle" font-size="11" class="lbl">✓ Grounded answer + citation</text>
+</svg>

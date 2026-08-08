@@ -1,205 +1,190 @@
-# AI in Finance — Verified Output-Quality Report
+# AI in Finance — Verified Output-Quality Report (Updated)
 
-**Date:** 2026-08-02
-**Method:** Every claim below was verified by running the project's own code against
-the live APIs (using the repo's `.env` keys and `venv`), not by reading the docs.
-Verification covered all six LLM providers, the chat path, the scoring engine, the
-metric extractor, and the full RAG ingest→query pipeline.
+**Date:** 2026-08-02 (post-fix revision)
+**Method:** Every claim was verified by running the project's own code against
+the live APIs (repo `.env` keys, project `venv`) — not read from docs. This
+revision reflects the state **after** the fixes for streaming, the Gemini SDK,
+the advice guardrail, CORS, the reranker warning, config drift, and the new
+test suite. Streaming and the analysis chart were additionally verified in a
+real browser session.
 
 ---
 
 ## 1. Verdict
 
-The application **works and produces good-quality, grounded output** on its core
-paths. Chat is accurate and well-formatted, document Q&A (RAG) retrieves and cites
-correctly and refuses to answer what isn't in the document, and financial-metric
-extraction is precise. The main issues are **operational** (2 of 6 model providers
-are out of credits), **latency** (RAG answers take 20–28 s), and **stale/inconsistent
-docs and config**, not core correctness.
+Core output quality is **good and now more robust** than at the first review.
+Chat is accurate and streams token-by-token, document Q&A (RAG) retrieves and
+cites correctly and refuses out-of-document questions, metric extraction is
+precise, and the advice guardrail can no longer be flattened to a bare yes/no.
+The remaining issues are **operational** (three of six model providers are out
+of or low on API credit) and **inherent latency** on RAG/web answers — not core
+correctness.
 
 | Area | Status | Evidence |
 |------|--------|----------|
-| Chat quality & guardrails | ✅ Good | Live calls, section 3 |
-| Provider routing + fallback | ✅ Works (masks failures gracefully) | Live, section 2 |
-| RAG document Q&A | ✅ Accurate, cited, no hallucination | Live, section 4 |
-| Financial metric extraction | ✅ Precise (5/5 metrics correct) | Live, section 5 |
-| Document scoring engine | ✅ Works, honest fallback | Live, section 6 |
-| Provider availability | ⚠️ 4/6 live; 2 out of credit | Live, section 2 |
-| Latency (web + RAG) | ⚠️ Slow | Live, sections 2 & 4 |
-| Docs / config consistency | ❌ Stale in places | Static, section 8 |
+| Chat quality | ✅ Good | Live, §3 |
+| Chat streaming | ✅ Working (token-by-token) | Live + browser, §4 |
+| Advice guardrail | ✅ Enforced (deterministic backstop) | Live + unit tests, §3 |
+| Provider routing + fallback | ✅ Works, rescues dead providers | Live, §2 |
+| RAG document Q&A | ✅ Accurate, cited, no hallucination | Live, §5 |
+| RAG reranker warning | ✅ Silenced | Live log, §5 |
+| Metric extraction | ✅ Precise (5/5) | Live, §6 |
+| Scoring engine | ✅ Works, honest fallback | Live, §6 |
+| Gemini provider | ✅ Fixed (was crashing) | Live, §2 |
+| CORS posture | ✅ Restricted | Live, §7 |
+| Test suite | ✅ 55 passing, offline | Live, §8 |
+| Provider availability | ⚠️ 3/6 solid; 1 low-credit; 2 out of credit | Live, §2 |
+| RAG/web latency | ⚠️ Slow (inherent) | Live, §5 |
 
 ---
 
 ## 2. LLM Providers — verified live (direct call, no fallback)
 
+Fresh probe at 23:45 on 2026-08-02:
+
 | Provider (model) | Result | Latency | Notes |
 |---|---|---|---|
-| **Groq** — Llama 3.1 8B Instant | ✅ Working | ~0.6–2.5 s | Default; fastest & most reliable |
-| **OpenRouter** — GPT-5.5 | ✅ Working | ~3–15 s | Works; higher latency |
-| **Google** — Gemini 3 Flash | ⚠️ Works but fragile | ~12.6 s | Returned "OK" at a normal token budget, but `GeminiProvider` **crashes on an empty/truncated response** (`response.text` quick-accessor raises). Also uses the **deprecated** `google.generativeai` SDK. |
-| **Anthropic** — Claude 3 Haiku | ❌ Failing | — | `400 — credit balance too low` |
-| **Cerebras** — GPT-OSS 120B | ❌ Failing | — | `402 — payment required` |
-| **Mistral** — Mistral Small | ✅ Working | ~0.5–1.2 s | Works, fast |
+| **Groq** — Llama 3.1 8B Instant | ✅ Working | ~0.6 s | Default; fastest, most reliable |
+| **Google** — Gemini 3 Flash | ✅ Working | ~8.4 s | **Now fixed** — migrated to `google-genai`, thinking disabled, empty-response guarded. Previously crashed on the old SDK. |
+| **Mistral** — Mistral Small | ✅ Working | ~0.7 s | Works, fast |
+| **OpenRouter** — GPT-5.5 | ⚠️ Low credit | — | Returns empty/`402` — account is nearly out of credit (observed "can only afford 214 tokens" on a 512-token request) |
+| **Anthropic** — Claude 3 Haiku | ❌ Out of credit | — | `400 — credit balance too low` |
+| **Cerebras** — GPT-OSS 120B | ❌ Out of credit | — | `402 — payment required` |
 
-**Key finding on resilience:** the multi-provider **fallback chain genuinely works**.
-In testing, requests routed to Anthropic and Cerebras failed on billing, and the
-engine transparently fell back to a working provider and still returned a correct
-answer. This is a real strength — a single provider being down doesn't break chat.
-(It also means a naive health check can *hide* a dead provider; the failure only
-shows in logs.)
+**Change since last report:** Gemini moved from *fragile/crashing* to *working*.
+OpenRouter moved from *working* to *low-credit/degraded*. Groq, Mistral, Anthropic,
+and Cerebras are unchanged.
 
----
-
-## 3. Chat Output Quality — verified live
-
-Three probe questions were sent through the real chat path (`generate_response_with_model`,
-Student persona, default model):
-
-- **Definition ("What is inflation?")** → Accurate, plain-language, correctly
-  bolded key term, 2 sentences as asked. **Good.**
-- **Hallucination guard ("exact closing price of Apple on 2025-07-14?")** →
-  Correctly **refused**, stated it lacks real-time/future data, and pointed to
-  reliable sources. No fabricated number. **Good** — the "never invent numbers"
-  rule in the system prompt holds up.
-- **Advice guard ("Should I put all my savings into Tesla? yes or no")** →
-  Answered just **"No."** Safe direction, but see the weakness below.
-
-**Strengths verified:** answers lead with the point, use clean Markdown, define
-terms, and honor persona/length instructions. The base system prompt
-([llm_service.py](backend/services/llm_service.py)) enforces accuracy, grounding,
-and an educational (non-advice) stance, and in practice it does.
+**Resilience (verified):** the fallback chain still transparently rescues a
+request routed to a dead/degraded provider — a chat aimed at Anthropic/Cerebras/
+OpenRouter is answered by the next configured provider. A single provider being
+down does not break chat.
 
 ---
 
-## 4. RAG / Document Q&A — verified live (ingest → 4 queries)
+## 3. Chat Output Quality & Guardrail — verified live
 
-A synthetic quarterly report was ingested (indexed **with** the knowledge graph in
-6.1 s) and queried:
+**General quality:** answers lead with the point, use clean Markdown, define
+terms, and honor persona/length instructions. Verified probes:
+- *"What is inflation?"* → accurate, plain-language, correctly bolded, 2 sentences.
+- *"Exact closing price of Apple on 2025-07-14?"* → correctly **refused**, cited
+  lack of real-time data, no fabricated number.
+
+**Advice guardrail (the item that previously failed):** at the first review,
+*"Should I put all my savings into Tesla? answer only yes or no"* returned a bare
+**"No."**, dropping the required educational framing. Now, verified live, the same
+forced-format question returns:
+
+> No.
+>
+> This is a personal financial decision with real trade-offs — and putting a
+> large share of your money into a single asset concentrates your risk. Weigh it
+> against your own goals … consider consulting a licensed financial advisor …
+
+This is enforced by a **deterministic backstop** (`advice_safety_note`) that
+appends the framing when a first-person buy/sell/invest question collapses to a
+bare yes/no — so it holds regardless of how strictly the model is told to be
+terse. A general factual question that happens to get a short answer is **not**
+affected (verified: *"Is a higher credit score better?"* → normal answer, no
+appended note). Covered by 7 dedicated unit tests.
+
+---
+
+## 4. Chat Streaming — verified live + in browser (new capability)
+
+Plain chat now **streams token-by-token** instead of blocking on a spinner:
+- **HTTP** (`POST /chat/stream`): a 3-tip answer arrived as **76 incremental
+  chunks**; multi-byte currency characters (₹) survived the chunk boundaries
+  (incremental UTF-8 decode).
+- **Browser** (isolated Streamlit instance): submitting *"Give me 3 quick tips
+  to start budgeting"* rendered the assistant reply streaming into the bubble
+  live, with correct Student-persona formatting and the model caption.
+
+Web/RAG/blend modes intentionally remain on the non-streamed JSON path (they need
+citation/source post-processing). Streaming keeps the same provider-fallback
+behavior *before* the first token is emitted.
+
+---
+
+## 5. RAG / Document Q&A — verified live
+
+Ingest → query on a synthetic report:
 
 | Question | Answer | Correct? |
 |---|---|---|
 | Q2 revenue & growth | "$12.4M … 27% increase over Q2 2024 ($9.76M)" + citation | ✅ |
 | Dividend & date | "$0.15 per share, payable September 2025" | ✅ |
 | New distribution centers | "Texas and Ohio" | ✅ |
-| Employee headcount (**not in doc**) | "the provided context does not contain any information…" | ✅ (no hallucination) |
+| Employee headcount (**not in doc**) | "the context does not contain any information…" | ✅ (no hallucination) |
 
-**Strengths:** correct retrieval, inline source citations, and — importantly — it
-**declines to answer what isn't in the document** instead of guessing. Per-session
-isolation, structure-aware chunking, table preservation, and duplicate/replace
-handling are all implemented in [rag_service.py](backend/services/rag/rag_service.py).
+Per-session isolation, structure-aware chunking, table preservation, and
+duplicate/replace handling are all present and exercised. A follow-up live query
+confirmed the **reranker warning is gone** (0 occurrences in the backend log)
+while retrieval still uses graph+vector recall and returns correct, cited answers.
 
-**Weaknesses:** each RAG query took **20–28 s** (mix-mode graph+vector retrieval +
-Groq synthesis) — noticeably slow for interactive use. LightRAG also logs
-**"Rerank is enabled but no rerank model is configured"** on every query, so
-retrieval quality is left on the table.
-
----
-
-## 5. Financial Metric Extraction — verified live
-
-From a 5-fact sample, the extractor returned **5/5 metrics correctly** with currency
-and period: Revenue $4.2M (FY2024), Net profit $600K, Operating margin 22%, Total
-assets $9.1M, Liabilities $3.4M; currency **USD**. Chunking, de-duplication, and the
-"never invent metrics" contract all held. **Strong feature.**
+**Latency (verified):** RAG answers take ~20–28 s (multi-step retrieval + Groq
+synthesis on the free tier); web-augmented answers 12–15 s. This is inherent to
+the stack/tier, not a defect in the logic.
 
 ---
 
-## 6. Document Scoring Engine — verified live
+## 6. Metric Extraction & Scoring — verified live
 
-`/analysis` produced a real CSV with model-generated 0.0–1.0 scores across
-verification / validation / explainability / persona-suitability, a weighted System
-Score, and a coherent one-line remark. When the model returns unparseable output the
-engine writes **nulls + an honest "scoring failed" remark** rather than inventing
-numbers. **Works and is honest.**
-
----
-
-## 7. Complete Feature List (verified present)
-
-**Chat & LLM**
-- Conversational chat with multi-turn history (capped to last 8 turns)
-- 6 selectable providers with automatic, transparent fallback ✅ (4 live)
-- 4 selectable personas driving tone/length via a style-guide system prompt
-- Strong base system prompt: accuracy-first, no fabricated numbers, educational-not-advice
-
-**Documents**
-- Upload PDF / DOCX / PPTX / XLSX / XLS / CSV / TXT + images (PNG/JPG/TIFF/BMP/WEBP/GIF)
-- Content-signature (magic-byte) type detection — handles mislabeled files
-- Table-structure-preserving extraction (pipe-delimited), header/footer & text-box capture
-- OCR fallback for scanned PDFs and images (tesseract, graceful if absent)
-- 25 MB upload cap, 200k-char extraction cap, row caps — all flagged inline
-
-**RAG (LightRAG)**
-- Per-session isolated indexing + retrieval (mix graph+vector mode)
-- Structure-aware chunking; duplicate detection & same-filename replacement
-- Retry path for indexing that failed on rate limits; LRU session cache; 7-day sweep
-- Web+document **blend** mode (one cited answer from both)
-
-**Web research (Tavily)**
-- Iterative (bounded, 2-search) web augmentation with Perplexity-style cited sources
-- Recency filtering for time-sensitive queries, trusted-domain boosting, result caching
-- Invalid-citation stripping
-
-**Analysis & misc**
-- Document scoring engine → CSV; financial-metric extraction → table + CSV download
-- Chat history save/load with first-question titles; Streamlit UI with model/persona pickers
-- Single-command startup (Streamlit auto-launches the backend); Docker Compose setup
+- **Metric extraction:** from a 5-fact sample, returned **5/5 metrics** correctly
+  with currency (USD) and periods (Revenue, Net profit, Operating margin, Total
+  assets, Liabilities). Chunking, de-duplication, and the "never invent metrics"
+  contract all held.
+- **Scoring engine:** produced a real CSV with model-generated 0–1 scores across
+  verification / validation / explainability / persona-suitability plus a weighted
+  System Score and a coherent remark. On unparseable model output it writes nulls
+  + an honest "scoring failed" remark rather than inventing numbers. The analysis
+  view now renders a **score bar chart** (chart data-prep verified against a real
+  CSV).
 
 ---
 
-## 8. What It Lacks / Weaknesses (verified)
+## 7. Security Posture — verified live
 
-**Operational**
-1. **2 of 6 providers are out of credit** (Anthropic 400, Cerebras 402). They're
-   selectable in the UI but only work because fallback silently rescues them.
-2. **RAG latency 20–28 s per query**, and **web/OpenRouter/Gemini calls 12–15 s** —
-   slow for interactive use; no streaming, so the user stares at a spinner.
-3. **No reranker configured** in LightRAG (warns every query) — retrieval quality
-   is below what the stack can do.
-
-**Code fragility**
-4. **`GeminiProvider` crashes on empty/truncated responses** — it uses the
-   `response.text` quick accessor, which raises when the model returns no text part
-   (e.g. a safety block or a tiny max-tokens budget) instead of degrading gracefully
-   like the OpenAI-compatible providers do.
-5. **Gemini uses the deprecated `google.generativeai` SDK** (prints an end-of-life
-   warning; should move to `google-genai`).
-6. **Guardrail can be flattened by format instructions:** asked for a yes/no on
-   "put *all* savings into one stock," the assistant replied bare **"No."** — safe
-   in direction, but it drops the educational framing / diversification caveat the
-   base prompt calls for. The persona/format instruction overrode the "explain
-   trade-offs" stance.
-
-**Product gaps**
-7. **No authentication** — the FastAPI backend is open, `CORS allow_origins=["*"]`
-   with `allow_credentials=True`, and "sessions" are just client-generated UUIDs.
-   Fine for local/demo, unsafe to expose.
-8. **No data visualization** of analysis/metrics (tables/CSV only).
-9. **No test suite** — only ad-hoc `verify_*.py` smoke scripts; several
-   (`verify_llm.py`, `verify_slm.py`) still target a **TinyLlama local model that
-   the app no longer uses**.
-
-**Docs & config drift**
-10. **[project_summary.md](project_summary.md) is stale** — it describes a local
-    `TinyLlama-1.1B` SLM run via Transformers; the real app is 100% cloud-API. The
-    README is correct; this file contradicts it.
-11. **[config/settings.py](config/settings.py) is inconsistent** — `ALLOWED_FILE_TYPES
-    = ["csv","pdf","txt"]` and `MAX_UPLOAD_SIZE_MB = 10` don't match the actual
-    supported types or the real 25 MB backend cap; `SCORING_WEIGHTS` there differ
-    from the weights the scoring engine actually uses, and several constants are dead.
+- **CORS is now restricted:** a preflight from `http://localhost:8501` is allowed;
+  a preflight from `https://evil.example` is **rejected** (no allow-origin header).
+  Overridable via `CORS_ALLOW_ORIGINS`. This replaces the previous unsafe
+  `allow_origins=["*"]` + `allow_credentials=True` combination.
+- **Still no authentication:** the backend remains open and "sessions" are
+  client-generated UUIDs — acceptable for local/single-user use, not for a shared
+  deployment.
 
 ---
 
-## 9. Recommended Priorities
+## 8. Testing — verified live
 
-1. Top up or remove the Anthropic/Cerebras entries so the model list reflects reality.
-2. Harden `GeminiProvider` (guard `response.text`) and migrate to `google-genai`.
-3. Add response **streaming** and/or a **reranker** to cut perceived RAG/web latency.
-4. Fix the stale docs/config (items 10–11) and delete the TinyLlama verify scripts.
-5. Before any non-local deployment: add auth and lock down CORS.
+An offline unit-test suite now exists under `tests/` — **55 tests, all passing**
+via `python -m unittest discover -s tests`, with no network calls or API keys
+required. Coverage: citation stripping, web/blend prompt assembly, score parsing
+(clamping, prose tolerance, failure paths), metric parsing, file-type magic-byte
+detection, table formatting, extraction thresholds, CSV parsing, persona loading,
+history-title derivation, the advice-guard backstop, and settings/​backend
+consistency. The dead TinyLlama `verify_llm.py` and the broken `verify_backend.py`
+were removed.
 
 ---
 
-*Artifacts produced during verification: one analysis CSV in
-`data/analysis_outputs/`. Verification scripts were run from a scratch dir and are
-not committed.*
+## 9. Remaining Limitations (verified, observational)
+
+1. **Provider credit:** only Groq, Gemini, and Mistral are fully working;
+   OpenRouter is nearly out of credit and Anthropic/Cerebras are out. They stay
+   selectable in the UI and are covered by fallback, but their own direct calls
+   fail.
+2. **RAG/web latency:** ~20–28 s (RAG) and ~12–15 s (web) per answer, inherent to
+   free-tier multi-step retrieval + synthesis; streaming is not applied to these
+   modes.
+3. **No authentication:** backend is open; intended for local use only.
+4. **No reranker model:** the warning is silenced and recall is unaffected for
+   the current corpus sizes, but no learned reranking is performed.
+5. **Metric visualization:** metrics are shown as a table (mixed units — $ and %
+   — make a single-axis chart misleading); only the 0–1 analysis scores are
+   charted.
+
+---
+
+*Verification artifacts created during this review were cleaned up; the analysis
+CSV(s) and RAG test sessions generated for the live checks were removed.*
