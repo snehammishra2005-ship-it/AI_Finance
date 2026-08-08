@@ -138,6 +138,9 @@ class MetricsRequest(BaseModel):
 class RAGQueryRequest(BaseModel):
     question: str
     session_id: str = "default"
+    # Optional persona: when set, the grounded document answer is worded for
+    # this reader's finance-knowledge level (the facts/figures never change).
+    persona: str = "General User"
 
 class RAGReprocessRequest(BaseModel):
     session_id: str = "default"
@@ -422,7 +425,7 @@ async def rag_ask_endpoint(request: RAGQueryRequest):
             }
 
         rag_service = await rag_service_manager.get(request.session_id)
-        answer = await rag_service.ask(request.question)
+        answer = await rag_service.ask(request.question, persona=request.persona)
 
         # Replace LightRAG's internal "[no-context]" sentinel with a clean
         # message so the raw marker never reaches the user.

@@ -218,23 +218,85 @@ class RAGService:
             "still_failed": len(failed_after),
         }
 
-    async def ask(self, question: str):
+    async def ask(self, question: str, persona: str | None = None):
 
         await self.initialize()
+
+        # Persona-aware answering: when a persona is given, its style guide (and a
+        # HARD numeric guardrail) are injected into LightRAG's own rag_response
+        # template via QueryParam.user_prompt (the template's "Additional
+        # Instructions" slot). This keeps LightRAG's full mix-mode retrieval and
+        # its grounding/citation behaviour intact, and only changes HOW the
+        # grounded answer is worded for the reader - never the facts or figures.
+        user_prompt = self._build_persona_user_prompt(persona) if persona else None
 
         # No rerank model is configured in this deployment, so disable
         # reranking explicitly - otherwise LightRAG logs a "Rerank is enabled
         # but no rerank model is configured" warning on every query. Retrieval
         # still uses graph + vector (mix) recall. Fall back gracefully if an
-        # older LightRAG build doesn't accept the enable_rerank parameter.
+        # older LightRAG build doesn't accept these parameters.
         try:
-            answer = await self.rag.aquery(
-                question, param=QueryParam(mode="mix", enable_rerank=False)
-            )
+            param = QueryParam(mode="mix", enable_rerank=False)
+            if persona:
+                param.user_prompt = user_prompt
+                # Length/depth lever: bias the answer's shape to the reader.
+                param.response_type = self._persona_response_type(persona)
+            answer = await self.rag.aquery(question, param=param)
         except TypeError:
             answer = await self.rag.aquery(question, param=QueryParam(mode="mix"))
 
         return answer
+
+    # Per-persona answer shape, fed to LightRAG's response_type slot ("The
+    # response should be presented in {response_type}"). Keyed by the persona
+    # name with any " Persona" suffix stripped and lower-cased.
+    _RESPONSE_TYPES = {
+        "student": "a short, simple explanation in plain everyday language for someone "
+                   "with no finance background, using one relatable analogy and as few words as possible",
+        "engineering student": "a concise, logically structured, precise explanation",
+        "mba student": "a thorough, analytical explanation using appropriate financial "
+                       "terminology and business framing",
+        "teacher": "a clear, well-structured explanation that defines each term as it is used",
+        "clerk": "a clear, practical explanation in plain language focused on what it means day to day",
+        "homemaker": "a simple, friendly explanation in everyday language with a household "
+                     "analogy and no jargon",
+        "retiree": "a calm, plain-language explanation with no jargon, focused on what it means",
+        "senior citizen": "a brief, very plain, reassuring explanation with no jargon at all",
+        "general user": "a clear, concise explanation in plain language",
+    }
+    _DEFAULT_RESPONSE_TYPE = "a clear explanation pitched to the reader described"
+
+    @classmethod
+    def _persona_response_type(cls, persona: str) -> str:
+        key = (persona or "").lower().replace(" persona", "").strip()
+        return cls._RESPONSE_TYPES.get(key, cls._DEFAULT_RESPONSE_TYPE)
+
+    @staticmethod
+    def _build_persona_user_prompt(persona: str) -> str:
+        """
+        Build the "Additional Instructions" block injected into LightRAG's
+        rag_response template: a non-negotiable numeric guardrail first, then a
+        forceful instruction to genuinely tailor the explanation to the reader.
+        The guardrail is declared to override the styling, so adapting the answer
+        to the reader can never change a figure.
+        """
+        from utils.persona_manager import get_persona_prompt
+        style = get_persona_prompt(persona)
+        return (
+            "HARD RULE (overrides every style instruction below, never violate): "
+            "Reproduce every number, figure, percentage, ratio, date, and currency "
+            "amount EXACTLY as it appears in the Context. Do NOT change, round, "
+            "re-scale, reformat, approximate, translate, or invent any figure, and do "
+            "not alter the citations. If a figure is not in the Context, do not state "
+            "one. Adjusting the answer for the reader must never change the data.\n\n"
+            "REWRITE FOR THIS READER (important, not optional): genuinely adapt the "
+            "explanation's vocabulary, sentence complexity, depth, tone, and length to "
+            "the reader described below. Two different readers must receive noticeably "
+            "different explanations of the SAME facts - a beginner should get short, "
+            "jargon-free, analogy-led wording; an expert should get concise, technical "
+            "wording. Keep all facts, figures, and citations identical.\n"
+            f"READER PROFILE:\n{style}"
+        )
 
     async def get_context(self, question: str) -> str:
         """

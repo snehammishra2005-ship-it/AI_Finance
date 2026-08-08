@@ -302,7 +302,9 @@ def render_chat():
                         url=f"{BACKEND_BASE_URL}/rag/ask",
                         json={
                             "question": user_input,
-                            "session_id": st.session_state.get("session_id", "default")
+                            "session_id": st.session_state.get("session_id", "default"),
+                            # Ground the answer in the docs, worded for this persona.
+                            "persona": persona,
                         },
                         timeout=120
                     )
