@@ -43,15 +43,21 @@ How each test was run:
 | **Groq** (full RAG — app default) | **79.2%** | 9 / 1 / 2 |
 | **Mistral** (full RAG) | **70.8%** | 7 / 3 / 2 |
 
-### Test 2 — complete except Gemini
+### Test 2 — complete
 *Document: "Northwind Sample Holdings, Inc., Q2 FY2026" (operating-margin, operating-expense, and a net-income-that-doesn't-reconcile contradiction).*
 
 | Source | Score | Right / Partial / Wrong |
 |--------|:---:|:---:|
+| **Gemini** (Option B*) | **100%** | 12 / 0 / 0 |
 | **NotebookLM** (reference) | **95.8%** | 11 / 1 / 0 |
 | **Groq** (full RAG — app default) | **79.2%** | 9 / 1 / 2 |
 | **Mistral** (full RAG) | **62.5%** | 7 / 1 / 4 |
-| **Gemini** (full RAG) | **pending** | — |
+
+\* **Gemini = Option B** (Groq did the retrieval, Gemini only synthesised the answers), because a
+full Gemini run exceeds the free-tier 20-requests/day cap. Its context already surfaced the
+conflicting figures, so its column is **not perfectly like-for-like** with the full-pipeline
+Groq/Mistral columns — but it shows Gemini's reasoning is excellent: it was the **only source to
+fully catch** the net-income reconciliation trap (Q9), beating even NotebookLM.
 
 ---
 
@@ -64,13 +70,14 @@ How each test was run:
 3. **The weak spot is contradictions.** The app's local models (Groq, Mistral) tend to hand
    back one figure without noticing when the document disagrees with itself. This traces to
    the retrieval step surfacing a single figure and burying the conflict.
-4. **Gemini is the strongest of the app's models** (91.7% on Test 1) — the only local model
-   that reliably flags contradictions and gives both figures. Switching the document model to
-   Gemini is the clearest quality lever (the app is Groq-only for documents today).
+4. **Gemini is the strongest of the app's models** — 91.7% on Test 1 and a perfect **100% on
+   Test 2** (Option B). It reliably flags contradictions and gives both figures. Switching the
+   document model to Gemini is the clearest quality lever (the app is Groq-only for documents
+   today).
 5. **The reference isn't infallible.** Test 2's hardest question — a net income that doesn't
-   reconcile with its own income statement — **caught even NotebookLM**, while the shipping
-   Groq pipeline was the only source to flag it. "Reference-grade" still misses subtle
-   internal-consistency problems.
+   reconcile with its own income statement — **caught even NotebookLM** (and Mistral wrongly said
+   it reconciles). Only **Gemini fully caught it**, and Groq partly did. "Reference-grade" still
+   misses subtle internal-consistency problems.
 6. **Persona + RAG now work together.** As part of this work, the app was upgraded so a
    grounded document answer is also **worded for the reader's finance level** (Student, MBA,
    Senior Citizen, …) — with a hard guardrail that never lets the styling change a number.
