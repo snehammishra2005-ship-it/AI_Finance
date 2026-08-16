@@ -26,6 +26,7 @@ from ui.sidebar import render_sidebar
 from ui.chat import render_chat_header, render_chat
 from ui.analysis_view import render_analysis_view
 from ui.architecture import render_architecture_view
+from ui.auth_view import render_auth
 
 # =====================================================
 # PAGE CONFIG
@@ -113,6 +114,46 @@ if not st.session_state.backend_ready:
     st.stop()
 
 inject_global_css()
+
+# =====================================================
+# AUTHENTICATION GATE
+# =====================================================
+# The backend now requires a bearer token on every real endpoint, so the UI
+# gates on login too: no valid token → show the login/register screen and stop
+# before rendering the app.
+
+
+def _token_valid() -> bool:
+    token = st.session_state.get("auth_token")
+    if not token:
+        return False
+    # Validate a stored token once per token value (avoids a network round-trip
+    # on every Streamlit rerun).
+    if st.session_state.get("auth_validated_for") == token:
+        return True
+    try:
+        r = requests.get(
+            BACKEND_BASE_URL + "/auth/me",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=5,
+        )
+    except requests.exceptions.RequestException:
+        # Backend momentarily unreachable — don't force a logout on a network
+        # blip; trust the locally-stored token for now.
+        return True
+    if r.status_code == 200:
+        st.session_state.auth_validated_for = token
+        st.session_state.username = r.json().get("username", st.session_state.get("username"))
+        return True
+    # Token rejected (expired/invalid): drop it and fall back to the login screen.
+    st.session_state.pop("auth_token", None)
+    st.session_state.pop("auth_validated_for", None)
+    return False
+
+
+if not _token_valid():
+    render_auth()
+    st.stop()
 
 # =====================================================
 # SESSION STATE
