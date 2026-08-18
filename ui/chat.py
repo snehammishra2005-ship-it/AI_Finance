@@ -7,6 +7,7 @@ from config.settings import BACKEND_BASE_URL
 from config.slm_config import SLM_LIST
 from utils.persona_manager import get_persona_names
 from ui.file_upload import render_file_upload
+from ui.api import auth_headers
 
 
 # -------------------------------------------------
@@ -100,6 +101,7 @@ def _stream_chat(payload):
         with requests.post(
             f"{BACKEND_BASE_URL}/chat/stream",
             json=payload,
+            headers=auth_headers(),
             stream=True,
             timeout=180,
         ) as r:
@@ -306,6 +308,7 @@ def render_chat():
                             # Ground the answer in the docs, worded for this persona.
                             "persona": persona,
                         },
+                        headers=auth_headers(),
                         timeout=120
                     )
                 else:
@@ -323,6 +326,7 @@ def render_chat():
                             "session_id": st.session_state.get("session_id", "default"),
                             "history": history,
                         },
+                        headers=auth_headers(),
                         timeout=180
                     )
 

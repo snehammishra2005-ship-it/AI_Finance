@@ -1,0 +1,111 @@
+import os
+import tempfile
+import datetime as dt
+import unittest
+
+# Point the auth store at a throwaway SQLite file BEFORE importing the service.
+# auth_service._db_path() reads this env var at call time, so the test uses an
+# isolated DB regardless of import order and never touches the real data/auth.db.
+_TMP_DB = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+_TMP_DB.close()
+os.environ["AUTH_DB_PATH"] = _TMP_DB.name
+
+from backend.services import auth_service as A
+
+
+class PasswordHashing(unittest.TestCase):
+    def test_hash_is_not_plaintext_and_verifies(self):
+        h = A.hash_password("correct horse battery")
+        self.assertNotEqual(h, "correct horse battery")
+        self.assertTrue(A.verify_password("correct horse battery", h))
+
+    def test_wrong_password_fails(self):
+        h = A.hash_password("password123")
+        self.assertFalse(A.verify_password("password124", h))
+
+    def test_verify_handles_garbage_hash(self):
+        self.assertFalse(A.verify_password("whatever", "not-a-real-hash"))
+
+
+class Validation(unittest.TestCase):
+    def test_username_too_short(self):
+        with self.assertRaises(A.AuthError):
+            A.validate_credentials("ab", "longenough")
+
+    def test_username_bad_chars(self):
+        with self.assertRaises(A.AuthError):
+            A.validate_credentials("bad user!", "longenough")
+
+    def test_password_too_short(self):
+        with self.assertRaises(A.AuthError):
+            A.validate_credentials("gooduser", "short")
+
+    def test_valid_credentials_pass(self):
+        # Should not raise.
+        A.validate_credentials("good_user.1", "longenough")
+
+
+class UserStore(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        A.init_db()
+
+    def test_register_then_authenticate(self):
+        user = A.register_user("alice_test", "password123")
+        self.assertEqual(user["username"], "alice_test")
+        self.assertIn("id", user)
+        got = A.authenticate("alice_test", "password123")
+        self.assertEqual(got["id"], user["id"])
+
+    def test_authenticate_wrong_password(self):
+        A.register_user("bob_test", "password123")
+        with self.assertRaises(A.AuthError):
+            A.authenticate("bob_test", "wrongpass")
+
+    def test_authenticate_unknown_user(self):
+        with self.assertRaises(A.AuthError):
+            A.authenticate("nobody_here", "whatever12")
+
+    def test_duplicate_username_rejected(self):
+        A.register_user("carol_test", "password123")
+        with self.assertRaises(A.AuthError):
+            A.register_user("carol_test", "password456")
+
+
+class Tokens(unittest.TestCase):
+    def test_token_roundtrip(self):
+        token = A.create_token({"id": 42, "username": "dave_test"})
+        decoded = A.decode_token(token)
+        self.assertEqual(decoded["id"], 42)
+        self.assertEqual(decoded["username"], "dave_test")
+
+    def test_tampered_token_rejected(self):
+        token = A.create_token({"id": 1, "username": "x"})
+        with self.assertRaises(A.AuthError):
+            A.decode_token(token + "tampered")
+
+    def test_garbage_token_rejected(self):
+        with self.assertRaises(A.AuthError):
+            A.decode_token("not.a.jwt")
+
+    def test_expired_token_rejected(self):
+        import jwt
+        from config.settings import JWT_SECRET, JWT_ALGORITHM
+
+        past = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=1)
+        token = jwt.encode(
+            {
+                "sub": "1",
+                "username": "x",
+                "iat": past - dt.timedelta(hours=1),
+                "exp": past,
+            },
+            JWT_SECRET,
+            algorithm=JWT_ALGORITHM,
+        )
+        with self.assertRaises(A.AuthError):
+            A.decode_token(token)
+
+
+if __name__ == "__main__":
+    unittest.main()

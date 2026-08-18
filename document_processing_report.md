@@ -73,7 +73,7 @@ flowchart TD
     SUFF -- No --> RAG
 
     RAG["RAGServiceManager.get(session_id)<br/>→ ingest_document"] --> DEDUP["Replace same-filename doc<br/>/ skip content duplicate"]
-    DEDUP --> LR["LightRAG pipeline<br/>chunk → embed (MiniLM)<br/>→ entity/graph via Groq"]
+    DEDUP --> LR["LightRAG pipeline<br/>chunk → embed (bge-small)<br/>→ entity/graph via Groq"]
     LR --> STORE[("Per-session vector +<br/>graph store on disk")]
 
     STORE --> QA["/rag/ask<br/>grounded Q&amp;A + citations"]
@@ -129,7 +129,8 @@ the bytes are ambiguous (plain text).
 Per-session isolation via `RAGServiceManager`. On ingest, a same-named document
 **replaces** the prior version (restated reports), and identical content is
 treated as an already-indexed duplicate. LightRAG then chunks, embeds
-(`all-MiniLM-L6-v2`), and extracts an entity/relationship graph via Groq.
+(`BAAI/bge-small-en-v1.5`, 384-d, local CPU), and extracts an entity/relationship
+graph via Groq.
 
 ## 5. Downstream consumers
 

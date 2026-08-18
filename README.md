@@ -10,9 +10,11 @@ automated document scoring engine.
   (Student, General User, etc.). Backed by cloud LLM providers — no local model
   download required.
 - **Multiple LLM Providers**: Switch between Groq (Llama 3.1 8B, default), OpenRouter
-  (GPT-5.5), Google (Gemini 1.5 Flash), and Anthropic (Claude 3 Haiku). Configured in
-  `config/slm_config.py`.
-- **File Processing**: Upload PDF, DOCX, PPTX, or text files for text extraction.
+  (GPT-5.5), Google (Gemini 3 Flash), Anthropic (Claude 3 Haiku), Cerebras (GPT-OSS
+  120B), and Mistral (Mistral Small). A fallback router transparently retries another
+  configured provider if the selected one fails. Configured in `config/slm_config.py`.
+- **File Processing**: Upload PDF, DOCX, PPTX, XLSX/XLS, CSV, text, or image files
+  (PNG/JPG/… via OCR) for text extraction.
 - **RAG / Deep Research**: Uploaded documents are indexed per-session and can be
   queried directly ("Answer using my uploaded documents"). Chat can also be augmented
   with live web search (via Tavily) for cited, up-to-date answers.
@@ -23,7 +25,7 @@ automated document scoring engine.
 
 - **Backend**: Python 3.11, FastAPI
 - **Frontend**: Streamlit
-- **LLM Providers**: Groq, OpenRouter, Google Gemini, Anthropic (via their APIs)
+- **LLM Providers**: Groq, OpenRouter, Google Gemini, Anthropic, Cerebras, Mistral (via their APIs)
 - **RAG**: LightRAG-based document indexing and retrieval
 - **Web Search**: Tavily API (for Deep Research / web-augmented chat)
 - **Containerization**: Docker, Docker Compose
@@ -56,6 +58,8 @@ automated document scoring engine.
     OPENROUTER_API_KEY=...
     GEMINI_API_KEY=...
     ANTHROPIC_API_KEY=...
+    CEREBRAS_API_KEY=...
+    MISTRAL_API_KEY=...
     TAVILY_API_KEY=...   # optional, enables web search in chat
     ```
     Only `GROQ_API_KEY` is required for the default model; the others are only needed
@@ -109,8 +113,8 @@ for that container's backend to become reachable instead of starting a redundant
 ## Project Structure
 
 - `backend/`: FastAPI application code.
-    - `main.py`: Entry point and API routes (`/chat`, `/files`, `/rag/ask`,
-      `/rag/reprocess`, `/analysis`).
+    - `main.py`: Entry point and API routes (`/chat`, `/chat/stream`, `/files`,
+      `/metrics`, `/rag/ask`, `/rag/reprocess`, `/analysis`).
     - `services/`: LLM provider routing, file processing, scoring, web research.
     - `services/rag/`: Per-session RAG indexing and retrieval (LightRAG-based).
 - `ui/`: Streamlit frontend application.

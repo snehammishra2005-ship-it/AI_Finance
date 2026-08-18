@@ -31,8 +31,8 @@ Key properties:
 
 **Providers:** Groq, OpenRouter, Google Gemini, Anthropic (each via its SDK),
 plus Cerebras and Mistral (OpenAI-compatible, sharing one base adapter). All cap
-`max_tokens` (default 512; 1024 for web/research answers) and use a **60-second
-per-call timeout**.
+`max_tokens` (800 for plain chat; 1024 for web/research/blend answers) and use a
+**60-second per-call timeout**.
 
 ## 3. The model pool
 
@@ -75,7 +75,7 @@ around them automatically.
 | Timeouts | 60 s per provider call, so a hung upstream can't block a worker |
 | Errors as errors | Providers raise `LLMProviderError`; `/chat` maps it to HTTP 502 |
 | Provider cache | Clients cached by provider+model to avoid re-initializing heavy SDKs |
-| Configurable output | `max_tokens` parameterized (512 default, 1024 for web/research) |
+| Configurable output | `max_tokens` parameterized (800 plain chat, 1024 for web/research) |
 | Transparent fallback | Response reports the model that actually answered |
 
 ## 6. Activity diagram
@@ -123,10 +123,12 @@ flowchart LR
 
 - **Live:** 4 of 6 models answer directly (Groq, OpenRouter, Gemini, Mistral);
   Anthropic and Cerebras need account credit and are covered by fallback.
-- **Not implemented (by design, for now):** streaming responses; token/cost
-  usage metering; rate-limit-aware *predictive* routing (the current fallback is
-  reactive — it retries after a failure rather than tracking per-provider
-  quota).
+- **Streaming:** plain chat streams token-by-token via `POST /chat/stream`;
+  web/RAG/blend answers stay on the JSON `/chat` path because they need
+  citation/source post-processing. Fallback still applies before the first token.
+- **Not implemented (by design, for now):** token/cost usage metering;
+  rate-limit-aware *predictive* routing (the current fallback is reactive — it
+  retries after a failure rather than tracking per-provider quota).
 - Verified end-to-end: all six models tested via `/chat`, fallback confirmed
   live (a failing provider transparently rolled to a working one), and unknown
   model names degrade gracefully to the default.

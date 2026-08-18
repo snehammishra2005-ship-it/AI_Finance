@@ -23,6 +23,12 @@ data/analysis_outputs/
 data/runtime/
 data/test_reports/
 rag_storage/
+
+# Auth store & secrets — NEVER commit (user accounts + JWT signing key)
+data/auth.db
+data/*.db
+data/.jwt_secret
+data/.backend.lock
 *.csv
 *.pdf
 *.txt

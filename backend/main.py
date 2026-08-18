@@ -7,10 +7,11 @@ This backend handles:
 - Analysis & scoring (CSV Generation)
 """
 
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
 import logging
@@ -47,6 +48,14 @@ from backend.services.research_service import (
     build_blend_prompt,
     strip_invalid_citations,
 )
+from backend.services.auth_service import (
+    init_db as auth_init_db,
+    register_user,
+    authenticate,
+    create_token,
+    decode_token,
+    AuthError,
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -60,6 +69,8 @@ async def lifespan(app: FastAPI):
     # Startup: Load Model
     logger.info("Startup: Loading SLM Model...")
     try:
+        # Create the user store (auth) if it doesn't exist yet.
+        auth_init_db()
         # Pre-load the model so the first request isn't slow
         # Warning: This downloads the model if not present (~600MB+)
         llm_engine.load_model()
@@ -111,8 +122,44 @@ app.add_middleware(
 )
 
 # -------------------------------------------------
+# Authentication dependency
+# -------------------------------------------------
+# Every endpoint except "/" (health) and "/auth/*" requires a valid bearer
+# token, so the backend is no longer an open API even though it listens on a
+# published port. auto_error=False lets us raise our own clean 401 (with a
+# WWW-Authenticate header) instead of FastAPI's default 403.
+_bearer_scheme = HTTPBearer(auto_error=False)
+
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(_bearer_scheme),
+) -> dict:
+    """FastAPI dependency: validate the Authorization: Bearer <token> header and
+    return the {'id', 'username'} it encodes. Raises 401 if missing/invalid."""
+    if credentials is None or not credentials.credentials:
+        raise HTTPException(
+            status_code=401,
+            detail="Not authenticated.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    try:
+        return decode_token(credentials.credentials)
+    except AuthError as e:
+        raise HTTPException(
+            status_code=401,
+            detail=str(e),
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+# -------------------------------------------------
 # Data Models
 # -------------------------------------------------
+class AuthRequest(BaseModel):
+    username: str
+    password: str
+
+
 class ChatRequest(BaseModel):
     message: str
     persona: str = "General User"
@@ -157,8 +204,42 @@ def root():
         "active_model": llm_engine.current_model_name
     }
 
+# -------------------------------------------------
+# Auth endpoints (open — no token required)
+# -------------------------------------------------
+@app.post("/auth/register")
+def register_endpoint(request: AuthRequest):
+    """Create a new account and return a bearer token so the user is logged in
+    immediately after signing up."""
+    try:
+        user = register_user(request.username, request.password)
+        token = create_token(user)
+        return {"token": token, "username": user["username"]}
+    except AuthError as e:
+        # 400 for validation, 409 for a taken username.
+        status = 409 if "already taken" in str(e) else 400
+        raise HTTPException(status_code=status, detail=str(e))
+
+
+@app.post("/auth/login")
+def login_endpoint(request: AuthRequest):
+    """Verify credentials and return a bearer token."""
+    try:
+        user = authenticate(request.username, request.password)
+        token = create_token(user)
+        return {"token": token, "username": user["username"]}
+    except AuthError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+
+
+@app.get("/auth/me")
+def me_endpoint(user: dict = Depends(get_current_user)):
+    """Return the current user — used by the frontend to validate a stored
+    token on load."""
+    return {"id": user["id"], "username": user["username"]}
+
 @app.post("/chat")
-async def chat_endpoint(request: ChatRequest):
+async def chat_endpoint(request: ChatRequest, user: dict = Depends(get_current_user)):
     """
     Handles chat requests using the selected LLM.
 
@@ -263,7 +344,7 @@ async def chat_endpoint(request: ChatRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/chat/stream")
-async def chat_stream_endpoint(request: ChatRequest):
+async def chat_stream_endpoint(request: ChatRequest, user: dict = Depends(get_current_user)):
     """
     Streaming variant of /chat for the plain chat path (no web search / no
     document grounding - those need post-processing like citation handling and
@@ -310,7 +391,8 @@ async def chat_stream_endpoint(request: ChatRequest):
 @app.post("/files")
 async def file_processing_endpoint(
     file: UploadFile = File(...),
-    session_id: str = Form("default")
+    session_id: str = Form("default"),
+    user: dict = Depends(get_current_user),
 ):
     """
     Receives an uploaded file, determines type, and extracts text.
@@ -397,7 +479,7 @@ async def file_processing_endpoint(
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/metrics")
-async def metrics_endpoint(request: MetricsRequest):
+async def metrics_endpoint(request: MetricsRequest, user: dict = Depends(get_current_user)):
     """
     Extracts explicitly-stated financial metrics (revenue, profit, margins,
     ratios, etc.) from a document's extracted text as structured rows.
@@ -410,7 +492,7 @@ async def metrics_endpoint(request: MetricsRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/rag/ask")
-async def rag_ask_endpoint(request: RAGQueryRequest):
+async def rag_ask_endpoint(request: RAGQueryRequest, user: dict = Depends(get_current_user)):
     """
     Answers a question grounded in documents uploaded during this session
     only (see session_id) - not the global set of every uploaded document.
@@ -441,7 +523,7 @@ async def rag_ask_endpoint(request: RAGQueryRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/rag/reprocess")
-async def rag_reprocess_endpoint(request: RAGReprocessRequest):
+async def rag_reprocess_endpoint(request: RAGReprocessRequest, user: dict = Depends(get_current_user)):
     """
     Retries any documents in this session whose RAG indexing previously
     failed (e.g. a provider rate limit mid-extraction), so they can gain
@@ -458,7 +540,7 @@ async def rag_reprocess_endpoint(request: RAGReprocessRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/analysis")
-def analysis_endpoint(request: AnalysisRequest):
+def analysis_endpoint(request: AnalysisRequest, user: dict = Depends(get_current_user)):
     """
     Triggers the scoring engine to generate analysis CSV.
     """

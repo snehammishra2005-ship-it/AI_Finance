@@ -57,6 +57,49 @@ MAX_UPLOAD_SIZE_MB = 25
 # the two drifting apart.
 
 # -------------------------------------------------
+# Authentication (per-user accounts)
+# -------------------------------------------------
+# SQLite user store. Overridable via env so tests can point at a throwaway DB
+# and a real deployment can move it onto a mounted volume. (Migrates to Postgres
+# per the production-readiness plan, P1 #6.)
+AUTH_DB_PATH = os.getenv("AUTH_DB_PATH", str(DATA_DIR / "auth.db"))
+
+# JWT signing. HS256 with a shared secret. Token lifetime is in hours.
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRY_HOURS = int(os.getenv("JWT_EXPIRY_HOURS", "24"))
+
+
+def _load_or_create_jwt_secret() -> str:
+    """
+    The JWT signing secret. In production set JWT_SECRET explicitly (via a real
+    secrets manager). For local/dev convenience, if it isn't set we generate one
+    once and persist it to data/.jwt_secret so issued tokens survive a restart
+    instead of being invalidated every boot.
+    """
+    secret = os.getenv("JWT_SECRET")
+    if secret:
+        return secret
+
+    import secrets as _secrets
+
+    secret_file = DATA_DIR / ".jwt_secret"
+    try:
+        if secret_file.exists():
+            existing = secret_file.read_text(encoding="utf-8").strip()
+            if existing:
+                return existing
+        generated = _secrets.token_urlsafe(48)
+        secret_file.write_text(generated, encoding="utf-8")
+        return generated
+    except OSError:
+        # Read-only filesystem: fall back to an in-process secret (tokens won't
+        # survive a restart, but the app still runs).
+        return _secrets.token_urlsafe(48)
+
+
+JWT_SECRET = _load_or_create_jwt_secret()
+
+# -------------------------------------------------
 # Backend (FastAPI) Settings
 # -------------------------------------------------
 # Overridable via env so Docker Compose can point the frontend container at

@@ -4,6 +4,7 @@ import os
 import pandas as pd
 import requests
 from config.settings import BACKEND_BASE_URL, ALLOWED_FILE_TYPES
+from ui.api import auth_headers
 
 def render_file_upload():
     """
@@ -42,6 +43,7 @@ def render_file_upload():
                             f"{BACKEND_BASE_URL}/files",
                             files=files,
                             data={"session_id": st.session_state.get("session_id", "default")},
+                            headers=auth_headers(),
                             timeout=120
                         )
 
@@ -85,6 +87,7 @@ def render_file_upload():
                         res = requests.post(
                             f"{BACKEND_BASE_URL}/analysis",
                             json=payload,
+                            headers=auth_headers(),
                             timeout=120
                         )
 
@@ -112,6 +115,7 @@ def render_file_upload():
                                 "filename": uploaded_file.name,
                                 "text_content": st.session_state.processed_text,
                             },
+                            headers=auth_headers(),
                             timeout=120
                         )
 
@@ -153,6 +157,7 @@ def render_file_upload():
                 res = requests.post(
                     f"{BACKEND_BASE_URL}/rag/reprocess",
                     json={"session_id": st.session_state.get("session_id", "default")},
+                    headers=auth_headers(),
                     timeout=120
                 )
 

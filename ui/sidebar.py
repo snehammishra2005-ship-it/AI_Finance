@@ -5,6 +5,7 @@ from utils.history_manager import (
     load_all_histories,
     load_chat_history
 )
+from ui.api import logout
 
 
 # -------------------------------------------------
@@ -108,19 +109,24 @@ def render_sidebar():
                 )
 
         # =================================================
-        # USER ACCOUNT ROW (decorative - the app has no auth)
+        # USER ACCOUNT ROW (logged-in user + logout)
         # Keyed container so CSS can pin it to the very bottom of the sidebar.
         # =================================================
         with st.container(key="sidebar_user_dock"):
+            username = st.session_state.get("username", "User")
+            initials = (username[:2] or "U").upper()
             st.markdown(
-                """
+                f"""
                 <div class='sidebar-user'>
-                    <div class='avatar'>AF</div>
+                    <div class='avatar'>{initials}</div>
                     <div class='who'>
-                        <div class='name'>AI in Finance</div>
-                        <div class='plan'>Local build</div>
+                        <div class='name'>{username}</div>
+                        <div class='plan'>Signed in</div>
                     </div>
                 </div>
                 """,
                 unsafe_allow_html=True
             )
+            if st.button("Log out", use_container_width=True, key="logout_btn"):
+                logout()
+                st.rerun()
