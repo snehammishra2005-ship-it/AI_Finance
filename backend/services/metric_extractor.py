@@ -16,7 +16,7 @@ from backend.services.rag.groq_adapter import client as groq_client
 
 logger = logging.getLogger(__name__)
 
-MODEL = "llama-3.1-8b-instant"
+MODEL = "openai/gpt-oss-20b"  # Groq retired llama-3.1-8b-instant
 
 # The document is analysed in chunks of CHUNK_CHARS so metrics deep in a long
 # report aren't missed (each chunk is one LLM call). MAX_CHUNKS caps how many
@@ -114,6 +114,7 @@ async def _extract_chunk(snippet: str):
             messages=[{"role": "user", "content": prompt}],
             temperature=0,
             max_tokens=MAX_TOKENS,
+            reasoning_effort="low",  # gpt-oss is a reasoning model
         )
         raw = (resp.choices[0].message.content or "").strip()
     except Exception as e:

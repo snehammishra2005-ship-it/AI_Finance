@@ -58,7 +58,7 @@ class RAGService:
 
     def __init__(self, working_dir: str, workspace: str,
                  llm_model_func=groq_complete,
-                 llm_model_name: str = "llama-3.1-8b-instant"):
+                 llm_model_name: str = "openai/gpt-oss-20b"):
 
         os.makedirs(working_dir, exist_ok=True)
 

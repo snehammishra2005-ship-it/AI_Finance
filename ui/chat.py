@@ -19,7 +19,7 @@ def render_chat_header():
     app title on the left, compact Model / Persona pickers on the right.
     """
 
-    model_names = [m["name"] for m in SLM_LIST] or ["Llama 3.1 8B Instant (Groq)"]
+    model_names = [m["name"] for m in SLM_LIST] or ["GPT-OSS 20B (Groq)"]
     personas = get_persona_names() or ["General User"]
 
     current_slm = st.session_state.get("slm") or model_names[0]
@@ -251,7 +251,7 @@ def render_chat():
         st.session_state.messages.append({"role": "user", "content": user_input})
 
         persona = st.session_state.get("persona", "General User")
-        slm = st.session_state.get("slm", "Llama 3.1 8B Instant (Groq)")
+        slm = st.session_state.get("slm", "GPT-OSS 20B (Groq)")
 
         # Determine mode (both toggles = blend web + documents)
         if use_web and use_rag:

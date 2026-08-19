@@ -163,7 +163,7 @@ class AuthRequest(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     persona: str = "General User"
-    slm_model: str = "Llama 3.1 8B Instant (Groq)"
+    slm_model: str = "GPT-OSS 20B (Groq)"
     web_search: bool = False
     # When True (and the session has uploaded documents), the answer blends
     # the user's document context with web results into one cited reply.
@@ -176,7 +176,7 @@ class ChatRequest(BaseModel):
 class AnalysisRequest(BaseModel):
     filename: str
     text_content: str
-    model_name: str = "Llama 3.1 8B Instant (Groq)"
+    model_name: str = "GPT-OSS 20B (Groq)"
 
 class MetricsRequest(BaseModel):
     filename: str = "document"

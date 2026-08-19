@@ -22,12 +22,15 @@ def _oai_messages(system_prompt: str, user_message: str, history=None) -> list:
     return messages
 
 
-def _stream_oai(client, model_id, messages, max_tokens, label):
+def _stream_oai(client, model_id, messages, max_tokens, label, extra=None):
     """
     Shared streaming generator for OpenAI-style chat clients (OpenAI SDK, Groq
     SDK - both expose the same streamed `choices[].delta.content` shape). Yields
     text chunks as they arrive. Raises LLMProviderError on failure so the engine
     can fall back to another provider (only meaningful before the first chunk).
+
+    `extra` carries provider-specific kwargs (e.g. Groq's reasoning_effort);
+    it is only passed by providers that support it, so it doesn't leak to others.
     """
     try:
         stream = client.chat.completions.create(
@@ -37,6 +40,7 @@ def _stream_oai(client, model_id, messages, max_tokens, label):
             max_tokens=max_tokens,
             timeout=REQUEST_TIMEOUT,
             stream=True,
+            **(extra or {}),
         )
         for chunk in stream:
             if not chunk.choices:
@@ -271,10 +275,13 @@ class GroqProvider(BaseLLMProvider):
                 messages=_oai_messages(system_prompt, user_message, history),
                 max_tokens=max_tokens,
                 temperature=0.4,
-                timeout=REQUEST_TIMEOUT
+                timeout=REQUEST_TIMEOUT,
+                # gpt-oss (the current Groq model) is a reasoning model; keep the
+                # token budget on the answer, not internal reasoning.
+                reasoning_effort="low",
             )
 
-            return response.choices[0].message.content.strip()
+            return (response.choices[0].message.content or "").strip()
 
         except Exception as e:
             logger.error(f"Groq API Error: {e}")
@@ -284,7 +291,7 @@ class GroqProvider(BaseLLMProvider):
         yield from _stream_oai(
             self.client, self.model_id,
             _oai_messages(system_prompt, user_message, history),
-            max_tokens, "Groq",
+            max_tokens, "Groq", extra={"reasoning_effort": "low"},
         )
 
 

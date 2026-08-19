@@ -6,10 +6,10 @@
 # working provider.
 SLM_LIST = [
     {
-        "name": "Llama 3.1 8B Instant (Groq)",
-        "model_id": "llama-3.1-8b-instant",
+        "name": "GPT-OSS 20B (Groq)",
+        "model_id": "openai/gpt-oss-20b",
         "provider": "groq",
-        "description": "Ultra-fast Groq-hosted Llama model."
+        "description": "Fast Groq-hosted GPT-OSS 20B (replaces the retired Llama 3.1 8B Instant)."
     },
     {
         "name": "GPT-5.5 (OpenRouter)",

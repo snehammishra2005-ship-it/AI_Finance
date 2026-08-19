@@ -38,7 +38,7 @@ class ScoringEngine:
     }
 
     @staticmethod
-    def analyze_and_score(filename: str, text_content: str, model_name: str = "Llama 3.1 8B Instant (Groq)"):
+    def analyze_and_score(filename: str, text_content: str, model_name: str = "GPT-OSS 20B (Groq)"):
         """
         Analyzes the text content and generates a scored CSV report.
         """

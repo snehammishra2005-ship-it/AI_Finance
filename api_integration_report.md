@@ -38,7 +38,7 @@ plus Cerebras and Mistral (OpenAI-compatible, sharing one base adapter). All cap
 
 | Model | Provider | Status |
 |---|---|---|
-| Llama 3.1 8B Instant _(default)_ | Groq | ✅ live |
+| GPT-OSS 20B _(default)_ | Groq | ✅ live |
 | GPT-5.5 | OpenRouter | ✅ live |
 | Gemini 3 Flash | Google | ✅ live |
 | Mistral Small | Mistral | ✅ live |
@@ -47,6 +47,17 @@ plus Cerebras and Mistral (OpenAI-compatible, sharing one base adapter). All cap
 
 The two gated models are billing issues, not code — the fallback router routes
 around them automatically.
+
+**Update — Groq default model changed.** Groq **retired `llama-3.1-8b-instant`**
+(direct calls now return `404 model_not_found`), which had been the app's default
+across chat, RAG, scoring, and metric extraction. It was replaced with Groq's
+current fast model, **`openai/gpt-oss-20b`** (display name "GPT-OSS 20B (Groq)").
+Because gpt-oss is a *reasoning* model, all Groq call sites now pass
+`reasoning_effort="low"` so the token budget goes to the answer rather than
+internal reasoning, and add a None-guard so an empty completion degrades cleanly.
+Files touched: `slm_config.py`, `groq_adapter.py`, `rag_service.py`,
+`metric_extractor.py`, `api_providers.py`, `settings.py`, `main.py`,
+`scoring_engine.py`, `chat.py`, `file_upload.py`.
 
 ## 4. Request lifecycle (the fallback router)
 

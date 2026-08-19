@@ -44,10 +44,14 @@ async def groq_complete(
     )
 
     response = await client.chat.completions.create(
-        model="llama-3.1-8b-instant",
+        # Groq retired llama-3.1-8b-instant; gpt-oss-20b is the current fast
+        # Groq model. It's a reasoning model, so reasoning_effort="low" keeps the
+        # token budget on the answer rather than internal reasoning.
+        model="openai/gpt-oss-20b",
         messages=messages,
         temperature=0,
         max_tokens=min(kwargs.get("max_tokens", 512), 512),
+        reasoning_effort="low",
     )
 
     content = response.choices[0].message.content

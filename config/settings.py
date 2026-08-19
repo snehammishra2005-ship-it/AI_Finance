@@ -37,7 +37,7 @@ ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 # UI Defaults
 # -------------------------------------------------
 DEFAULT_PERSONA = "Student"
-DEFAULT_SLM = "Llama 3.1 8B Instant (Groq)"
+DEFAULT_SLM = "GPT-OSS 20B (Groq)"
 
 # -------------------------------------------------
 # File Upload Settings
