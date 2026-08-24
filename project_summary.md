@@ -16,13 +16,17 @@ model used by RAG.)
 
 ### Backend (FastAPI) — `backend/main.py`
 RESTful endpoints:
+- **`/auth/*`** — register/login; issues a JWT and scopes each user's history and
+  documents to their own account.
 - **`/chat`** — chat with the selected provider/persona. Supports multi-turn
   history, optional Tavily **web search**, and a **blend** mode that grounds the
   answer in both the session's uploaded documents and live web results (cited).
+- **`/chat/stream`** — the same plain-chat answer, streamed token by token.
 - **`/files`** — upload + text extraction (PDF, DOCX, PPTX, XLSX/XLS, CSV, TXT,
   and images via OCR), then per-session RAG indexing.
 - **`/rag/ask`** — question answering grounded strictly in the current session's
-  uploaded documents.
+  uploaded documents, **worded for the selected persona** (with a hard guardrail
+  that keeps every figure exact and never invents one).
 - **`/rag/reprocess`** — retries documents whose indexing previously failed
   (e.g. a provider rate limit).
 - **`/metrics`** — extracts explicitly-stated financial metrics as structured rows.
@@ -33,7 +37,7 @@ RESTful endpoints:
 A single `LLMEngine` router dispatches to one of six providers and **falls back
 transparently** to the next configured provider if the selected one fails
 (e.g. a rate limit or billing error), so a single provider outage doesn't break
-chat. Providers: **Groq** (Llama 3.1 8B, default), **OpenRouter** (GPT-5.5),
+chat. Providers: **Groq** (GPT-OSS 20B, default), **OpenRouter** (GPT-5.5),
 **Google** (Gemini 3 Flash, via the `google-genai` SDK), **Anthropic**
 (Claude 3 Haiku), **Cerebras** (GPT-OSS 120B), and **Mistral** (Mistral Small).
 Configured in `config/slm_config.py`; keys come from `.env`.
@@ -52,14 +56,17 @@ Components: chat (`ui/chat.py`), file upload + metric extraction
 sidebar with history (`ui/sidebar.py`), and an architecture view.
 
 ## Key Features
-1. **Persona-driven chat** — selectable audience personas drive tone/length via a
+1. **Per-user accounts** — register/login with JWT auth; chat history and uploaded
+   documents are isolated per user.
+2. **Persona-driven chat** — selectable audience personas drive tone/length via a
    style-guide system prompt layered on a safety-focused base prompt (accuracy
-   first, never invent numbers, educational-not-advice).
-2. **Multi-provider LLM routing** with automatic fallback.
-3. **Multi-format document extraction** with table preservation and OCR fallback.
-4. **Per-session RAG** document Q&A + web/document blend mode with cited sources.
-5. **Financial metric extraction** and **document scoring** with CSV export.
-6. **Chat history** save/load with first-question titles.
+   first, never invent numbers, educational-not-advice). Plain chat replies **stream**.
+3. **Multi-provider LLM routing** with automatic fallback.
+4. **Multi-format document extraction** with table preservation and OCR fallback.
+5. **Per-session RAG** document Q&A — **persona-aware** (answers reworded for the
+   reader, figures held exact) — plus web/document blend mode with cited sources.
+6. **Financial metric extraction** and **document scoring** with CSV export.
+7. **Chat history** save/load with first-question titles.
 
 ## Testing
 Offline unit tests live in `tests/` (run `python -m unittest discover -s tests`).
@@ -73,5 +80,6 @@ exercise the real provider APIs.
   account; fallback covers for them.
 - RAG and web-augmented answers have noticeable latency (multi-step retrieval +
   synthesis on free tiers).
-- No authentication; intended for local/single-user use. Restrict CORS
-  (`CORS_ALLOW_ORIGINS`) and add auth before any shared deployment.
+- Per-user auth is now in place (JWT), but other hardening remains before a shared
+  deployment — restrict CORS (`CORS_ALLOW_ORIGINS`), add rate limiting, and move the
+  file-based auth/history stores to a real database (see `PRODUCTION_READINESS.md`).

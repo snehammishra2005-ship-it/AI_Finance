@@ -9,15 +9,21 @@ automated document scoring engine.
 - **Conversational Interface**: Chat with an AI assistant using a selectable persona
   (Student, General User, etc.). Backed by cloud LLM providers — no local model
   download required.
-- **Multiple LLM Providers**: Switch between Groq (Llama 3.1 8B, default), OpenRouter
+- **Per-user Accounts**: Register/login with a username and password; the backend
+  issues a JWT and scopes each user's chat history and uploaded documents to their own
+  account. See `backend/services/auth_service.py` and `ui/auth_view.py`.
+- **Multiple LLM Providers**: Switch between Groq (GPT-OSS 20B, default), OpenRouter
   (GPT-5.5), Google (Gemini 3 Flash), Anthropic (Claude 3 Haiku), Cerebras (GPT-OSS
   120B), and Mistral (Mistral Small). A fallback router transparently retries another
   configured provider if the selected one fails. Configured in `config/slm_config.py`.
 - **File Processing**: Upload PDF, DOCX, PPTX, XLSX/XLS, CSV, text, or image files
   (PNG/JPG/… via OCR) for text extraction.
 - **RAG / Deep Research**: Uploaded documents are indexed per-session and can be
-  queried directly ("Answer using my uploaded documents"). Chat can also be augmented
-  with live web search (via Tavily) for cited, up-to-date answers.
+  queried directly ("Answer using my uploaded documents"). Grounded answers are also
+  **persona-aware** — worded for the selected reader (Student, MBA, …) while a hard
+  guardrail keeps every figure exact. Chat can also be augmented with live web search
+  (via Tavily) for cited, up-to-date answers, and plain chat replies **stream** token by
+  token.
 - **Scoring Engine**: Analyze document content and generate a CSV report with
   verification, validation, explainability, and persona-fit scores.
 
@@ -113,13 +119,14 @@ for that container's backend to become reachable instead of starting a redundant
 ## Project Structure
 
 - `backend/`: FastAPI application code.
-    - `main.py`: Entry point and API routes (`/chat`, `/chat/stream`, `/files`,
-      `/metrics`, `/rag/ask`, `/rag/reprocess`, `/analysis`).
-    - `services/`: LLM provider routing, file processing, scoring, web research.
+    - `main.py`: Entry point and API routes (`/auth/*`, `/chat`, `/chat/stream`,
+      `/files`, `/metrics`, `/rag/ask`, `/rag/reprocess`, `/analysis`).
+    - `services/`: LLM provider routing, file processing, scoring, web research, and
+      per-user authentication (`auth_service.py`).
     - `services/rag/`: Per-session RAG indexing and retrieval (LightRAG-based).
 - `ui/`: Streamlit frontend application.
     - `app.py`: Entry point — renders the UI and also starts/health-checks the backend.
-    - `chat.py`, `file_upload.py`, `analysis_view.py`, `sidebar.py`: page components.
+    - `auth_view.py`, `chat.py`, `file_upload.py`, `analysis_view.py`, `sidebar.py`: page components.
 - `config/`: App settings and the list of available LLM models/providers.
 - `docker-compose.yml`: Container orchestration config.
 - `Dockerfile`: Image definition.

@@ -8,6 +8,17 @@ live runs during this work (chat, RAG, web search, analysis, Docker build),
 not from assumption. Where something could not be fully verified, it is
 labelled as such.
 
+> **Update (Aug 2026) — since this assessment was written:**
+> - **Per-user authentication is now implemented** (JWT login/register,
+>   `backend/services/auth_service.py`, `ui/auth_view.py`) — the "no auth" finding
+>   in §0, §7.1 and the recommendations below is **resolved**. Chat history and
+>   uploaded documents are now scoped per user.
+> - **The Groq synthesis model changed** — Groq retired `llama-3.1-8b-instant`; the
+>   app now uses `openai/gpt-oss-20b` (`reasoning_effort="low"`).
+> - **RAG answers are now persona-aware** (worded for the reader, figures held exact).
+> - **Plain chat replies now stream** (recommendation #4, done).
+> The sections below are otherwise preserved as the original point-in-time assessment.
+
 ---
 
 ## 0. Executive summary
@@ -20,12 +31,13 @@ labelled as such.
 | Deep Research (web search) | ✅ Working — Tavily + inline citations + source list |
 | Docker | ⚠️ Builds & runs; both-containers-healthy not fully re-confirmed (daemon stopped mid-check) |
 | Output quality | ✅ Good, with concrete improvement areas |
-| Security / auth | ❌ **No authentication of any kind** — the biggest gap |
-| Data isolation | ⚠️ RAG isolated per session; **chat history is global** |
+| Security / auth | ✅ **Per-user JWT auth added** (was the biggest gap; see Update above) |
+| Data isolation | ✅ RAG isolated per session; **chat history now scoped per user** |
 
-The app is **functionally solid** and genuinely usable. Its weaknesses are
-**operational/security**, not functional: no login, global chat history, and
-single-working-LLM-provider.
+The app is **functionally solid** and genuinely usable. Its original weaknesses were
+**operational/security** (no login, global chat history); per-user auth has since
+closed the biggest of these. Remaining operational work (rate limits, a real DB,
+CORS) is tracked in `PRODUCTION_READINESS.md`.
 
 ---
 
@@ -194,8 +206,8 @@ sources beneath the reply. Web-off returns a plain answer with no sources.
 **Improvements**
 - Output length capped at 512 tokens — answers can feel truncated for complex
   questions.
-- Synthesis runs on Groq `llama-3.1-8b` (the one reliable provider) — fast and
-  good, but not frontier-level reasoning.
+- Synthesis runs on Groq `openai/gpt-oss-20b` (the one reliable provider; replaced
+  the retired `llama-3.1-8b-instant`) — fast and good, but not frontier-level reasoning.
 - Analysis produces one row per document (honest), but doesn't chunk long
   documents into per-section scores.
 
@@ -206,17 +218,18 @@ sources beneath the reply. Web-off returns a plain answer with no sources.
 This is the **weakest area** and the most important to address before any
 real/multi-user deployment.
 
-### 7.1 Authentication & authorization — ❌ NONE
-There is **no login, no user accounts, no API auth of any kind** (verified: no
-auth/login/JWT/session-token code exists). Consequences:
-- Anyone who can reach the app can use it freely, **consuming your paid API
-  credits** (Groq/Tavily).
-- Anyone can upload documents and **read every saved chat** (see 7.4).
-- The backend API (`:8000`) is directly reachable and unauthenticated.
+### 7.1 Authentication & authorization — ✅ ADDED (per-user JWT)
+> **Resolved since this assessment.** The app now has **per-user accounts** —
+> register/login issue a JWT (`backend/services/auth_service.py`, `ui/auth_view.py`),
+> the protected endpoints require a bearer token, and chat history and uploaded
+> documents are scoped to the authenticated user. The original finding (below) is
+> kept for context.
 
-→ **Highest-priority fix** if this is ever exposed beyond your own machine: add
-authentication (even a single shared password / API key gate), and don't publish
-the backend port publicly.
+*Original finding:* there was **no login, no user accounts, no API auth of any kind**.
+Consequences were: anyone reachable could burn paid API credits (Groq/Tavily), read
+every saved chat, and hit the unauthenticated backend on `:8000` directly. Remaining
+hardening (don't publish `:8000` publicly, add rate limiting) is tracked in
+`PRODUCTION_READINESS.md`.
 
 ### 7.2 Secrets handling — ✅ Good
 - `.env` is correctly **gitignored and NOT committed** to the repo (verified —
@@ -257,15 +270,15 @@ the backend port publicly.
 ## 8. Prioritized recommendations
 
 **Before any shared/deployed use (security):**
-1. **Add authentication** — no login today; anyone can use it, burn your API
-   credits, and read all chat history.
-2. **Make chat history per-session** (or per-user once auth exists) — it's global
-   today.
+1. ~~**Add authentication**~~ — ✅ **done** (per-user JWT login/register).
+2. ~~**Make chat history per-user**~~ — ✅ **done** (history now scoped to the
+   authenticated user).
 3. **Lock down CORS** to known origins and **stop publishing backend :8000** to
-   the host in Docker.
+   the host in Docker. *(still open — see `PRODUCTION_READINESS.md`)*
 
 **Product quality (high value, lower risk):**
-4. **Stream responses** + show research progress — biggest perceived-UX win.
+4. ~~**Stream responses**~~ — ✅ **done** (plain chat streams token by token);
+   research-progress display still a nice-to-have.
 5. **Hide/disable the 3 non-working model options** so users don't hit errors.
 6. **Unify the chat/docs/web toggles** into one segmented control.
 

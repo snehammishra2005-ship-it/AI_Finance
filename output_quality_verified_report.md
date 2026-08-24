@@ -8,6 +8,14 @@ the advice guardrail, CORS, the reranker warning, config drift, and the new
 test suite. Streaming and the analysis chart were additionally verified in a
 real browser session.
 
+> **Update (Aug 2026) — changes since this 2026-08-02 probe:** Groq retired
+> `llama-3.1-8b-instant`; the default is now **`openai/gpt-oss-20b`**
+> (`reasoning_effort="low"`). Since this report, the app also gained **per-user JWT
+> auth** and **persona-aware RAG** (grounded answers reworded for the reader, figures
+> held exact), and the document Q&A was evaluated against NotebookLM across three tests
+> (see `Evaluation with NotebookLM.md`). The point-in-time probe results below are
+> preserved as-is.
+
 ---
 
 ## 1. Verdict
@@ -44,7 +52,7 @@ Fresh probe at 23:45 on 2026-08-02:
 
 | Provider (model) | Result | Latency | Notes |
 |---|---|---|---|
-| **Groq** — Llama 3.1 8B Instant | ✅ Working | ~0.6 s | Default; fastest, most reliable |
+| **Groq** — Llama 3.1 8B Instant _(now `gpt-oss-20b`; see Update)_ | ✅ Working | ~0.6 s | Default; fastest, most reliable |
 | **Google** — Gemini 3 Flash | ✅ Working | ~8.4 s | **Now fixed** — migrated to `google-genai`, thinking disabled, empty-response guarded. Previously crashed on the old SDK. |
 | **Mistral** — Mistral Small | ✅ Working | ~0.7 s | Works, fast |
 | **OpenRouter** — GPT-5.5 | ⚠️ Low credit | — | Returns empty/`402` — account is nearly out of credit (observed "can only afford 214 tokens" on a 512-token request) |

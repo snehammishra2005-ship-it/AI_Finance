@@ -3,6 +3,11 @@
 _AI in Finance · full end-to-end recheck against the live Docker backend (`localhost:8000`)_
 _Date: 2026-07-31_
 
+> **Update (Aug 2026):** this is a point-in-time regression snapshot. Since it was
+> run, Groq retired `llama-3.1-8b-instant` and the default is now
+> **`openai/gpt-oss-20b`** (the "Groq" row below), and the app gained per-user JWT
+> auth and persona-aware RAG. Results below are preserved as-run.
+
 ## Scope
 
 Ran the whole project step by step and verified: every model, every document-
@@ -32,7 +37,7 @@ LLM accounts with no credit — handled gracefully by the fallback router.
 
 | Model | Result |
 |---|---|
-| Llama 3.1 8B Instant (Groq) | ✅ works |
+| Llama 3.1 8B Instant (Groq) _(now GPT-OSS 20B; see Update)_ | ✅ works |
 | GPT-5.5 (OpenRouter) | ✅ works |
 | Gemini 3 Flash (Google) | ✅ works — **fixed** (old `gemini-1.5-flash` was deprecated) |
 | Mistral Small (Mistral) | ✅ works |

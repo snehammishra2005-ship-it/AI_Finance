@@ -24,7 +24,7 @@ Two design commitments shape it:
 | Concern | Implementation | Detail |
 |---|---|---|
 | Orchestration | `LightRAG` (`lightrag-hku`) | Chunking, graph build, hybrid retrieval |
-| LLM (extraction + synthesis) | Groq `llama-3.1-8b-instant` | `groq_adapter.py` · `AsyncGroq(max_retries=5)` · `temperature=0` |
+| LLM (extraction + synthesis) | Groq `openai/gpt-oss-20b` | `groq_adapter.py` · `AsyncGroq(max_retries=5)` · `temperature=0` · `reasoning_effort="low"` (replaces the retired `llama-3.1-8b-instant`) |
 | Embeddings | `BAAI/bge-small-en-v1.5` | `embedding_adapter.py` · **384-dim**, normalized · local CPU |
 | Vector store | nano-vectordb | Per-session file |
 | Knowledge graph | NetworkX | Entities + relationships, per-session file |
@@ -63,7 +63,13 @@ Two design commitments shape it:
    empty directory. If none: a friendly "upload a document first" reply.
 2. **Hybrid query** — `aquery(mode="mix")` combines vector similarity with
    knowledge-graph traversal (LightRAG's strongest mode for multi-fact questions).
-3. **Synthesis** — Groq composes the answer and cites its sources.
+3. **Persona-aware synthesis** — `RAGService.ask(question, persona=…)` injects the
+   selected reader's style into `QueryParam.user_prompt` (via
+   `_build_persona_user_prompt`) so the grounded answer is **worded for that reader**
+   (Student, MBA, …). A **hard numeric guardrail** leads that prompt: reproduce every
+   figure from the retrieved context exactly, and never state a figure that isn't in
+   the context. So the styling changes the words, never the numbers — and the model
+   abstains instead of inventing a value. Groq composes the answer and cites its sources.
 4. **Sanitize** — LightRAG's internal `[no-context]` sentinel is replaced with a
    clean "couldn't find anything relevant" message so the raw marker never
    reaches the user.
