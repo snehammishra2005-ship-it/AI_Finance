@@ -41,6 +41,7 @@ KNOWN_SECRETS = {
     "MISTRAL_API_KEY": ("Mistral API key", False),
     "TAVILY_API_KEY": ("Tavily web-search API key (enables 'Search the web')", False),
     "JWT_SECRET": ("JWT signing secret for auth tokens", False),  # required only in prod
+    "DATABASE_URL": ("Database connection URL (may contain a password)", False),
 }
 
 

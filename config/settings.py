@@ -67,13 +67,17 @@ MAX_UPLOAD_SIZE_MB = 25
 # the two drifting apart.
 
 # -------------------------------------------------
+# Database (structured data: users, chat history)
+# -------------------------------------------------
+# SQLAlchemy connection URL. Defaults to a local SQLite file (zero-config for
+# dev/tests); set DATABASE_URL to a Postgres URL in production, e.g.
+#   postgresql+psycopg://user:pass@host:5432/dbname
+# Read via the secrets layer so DATABASE_URL_FILE (Docker/K8s secrets) works too.
+DATABASE_URL = get_secret("DATABASE_URL") or f"sqlite:///{(DATA_DIR / 'app.db').as_posix()}"
+
+# -------------------------------------------------
 # Authentication (per-user accounts)
 # -------------------------------------------------
-# SQLite user store. Overridable via env so tests can point at a throwaway DB
-# and a real deployment can move it onto a mounted volume. (Migrates to Postgres
-# per the production-readiness plan, P1 #6.)
-AUTH_DB_PATH = os.getenv("AUTH_DB_PATH", str(DATA_DIR / "auth.db"))
-
 # JWT signing. HS256 with a shared secret. Token lifetime is in hours.
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY_HOURS = int(os.getenv("JWT_EXPIRY_HOURS", "24"))

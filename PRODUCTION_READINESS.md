@@ -123,6 +123,12 @@ These stop the app from falling over or losing data as usage grows.
   moment you run more than one copy of the app.
 - **What to do:** Move to a database (e.g. **Postgres**) for history/metadata, **object
   storage** (e.g. S3) for uploaded files, and a **managed vector database** for RAG at scale.
+- **◧ In progress:** The **database** part is done — a SQLAlchemy layer (`backend/db.py`,
+  `backend/models.py`) now stores **users** and **chat history** in a real DB (SQLite for
+  dev, **Postgres** via `DATABASE_URL`; a Postgres service ships in the Docker production
+  profile). Chat history moved off per-user JSON files into DB-backed, per-user API
+  endpoints. **Still to do:** uploaded files → object storage (S3), and RAG stores →
+  a managed vector database.
 
 ### 7. Multi-instance / horizontal scaling
 - **What it is:** Running several copies of the app behind a load balancer to handle more
@@ -234,7 +240,7 @@ These are how you *run* the app confidently once it's live.
 | 3 | Secrets management | 🔴 P0 | ✅ Done |
 | 4 | HTTPS/TLS + hide backend port | 🔴 P0 | ✅ Done |
 | 5 | Rate limiting / abuse control | 🔴 P0 | ✅ Done |
-| 6 | Real database + object/vector storage | 🟠 P1 | ⬜ Todo |
+| 6 | Real database + object/vector storage | 🟠 P1 | ◧ DB done; object/vector storage todo |
 | 7 | Multi-instance / horizontal scaling | 🟠 P1 | ⬜ Todo |
 | 8 | Durable sessions | 🟠 P1 | ⬜ Todo |
 | 9 | Cost metering + per-user quotas | 🟠 P1 | ⬜ Todo |

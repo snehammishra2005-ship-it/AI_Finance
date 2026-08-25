@@ -35,3 +35,9 @@ anthropic>=0.21.3
 # Authentication (per-user accounts)
 bcrypt>=4.1.0
 PyJWT>=2.8.0
+
+# Database (structured data: users, chat history)
+# SQLAlchemy is the ORM/engine; SQLite is used by default (stdlib driver), and
+# psycopg (v3) is the driver for Postgres in production (DATABASE_URL).
+SQLAlchemy>=2.0.0
+psycopg[binary]>=3.1.0
