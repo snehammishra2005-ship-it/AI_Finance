@@ -6,7 +6,17 @@ DO NOT import Streamlit or UI code here.
 """
 
 import os
+import logging
 from pathlib import Path
+
+from config.secrets import get_secret, hydrate_env_from_files
+
+logger = logging.getLogger(__name__)
+
+# Resolve any *_FILE-provided secrets into the environment up front, so every
+# downstream os.environ read (provider SDK clients, Tavily, etc.) transparently
+# supports file-based secret stores (Docker/Kubernetes secrets, Vault).
+hydrate_env_from_files()
 
 # -------------------------------------------------
 # Project Root
@@ -71,17 +81,30 @@ JWT_EXPIRY_HOURS = int(os.getenv("JWT_EXPIRY_HOURS", "24"))
 
 def _load_or_create_jwt_secret() -> str:
     """
-    The JWT signing secret. In production set JWT_SECRET explicitly (via a real
-    secrets manager). For local/dev convenience, if it isn't set we generate one
-    once and persist it to data/.jwt_secret so issued tokens survive a restart
-    instead of being invalidated every boot.
+    The JWT signing secret, resolved via the secrets layer (env or a *_FILE
+    secret store). In production it MUST be provided explicitly — we refuse to
+    boot on a generated one, since a per-process secret would silently
+    invalidate everyone's sessions on restart and can't be shared across
+    replicas. For local/dev convenience only, an unset secret is generated once
+    and persisted to data/.jwt_secret so tokens survive a restart.
     """
-    secret = os.getenv("JWT_SECRET")
+    secret = get_secret("JWT_SECRET")
     if secret:
         return secret
 
+    if ENVIRONMENT == "production":
+        raise RuntimeError(
+            "JWT_SECRET is not set. In production it must be provided explicitly "
+            "(env var or a JWT_SECRET_FILE secret) — refusing to start with a "
+            "generated key."
+        )
+
     import secrets as _secrets
 
+    logger.warning(
+        "JWT_SECRET not set — generating a development key (data/.jwt_secret). "
+        "Set JWT_SECRET explicitly before any real deployment."
+    )
     secret_file = DATA_DIR / ".jwt_secret"
     try:
         if secret_file.exists():

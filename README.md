@@ -80,14 +80,30 @@ automated document scoring engine.
 
 ### Option 2: Docker Setup
 
+**Local development:**
+
 1.  Build and run the containers:
     ```bash
-    docker-compose up --build
+    docker compose up --build
     ```
 
-2.  Access the application:
-    - Frontend: `http://localhost:8501`
-    - Backend API: `http://localhost:8000`
+2.  Access the application at `http://localhost:8501`.
+    - The backend is **not published to the host** — it's reachable only on the
+      internal Docker network (by the frontend), so there's no open,
+      unauthenticated API port. The frontend is bound to `127.0.0.1` only.
+
+**Production (HTTPS):** a Caddy reverse proxy (the `production` profile) is the
+only public entry point. It terminates TLS and forwards to the frontend
+internally; the backend stays private.
+
+```bash
+DOMAIN=app.example.com docker compose --profile production up -d --build
+```
+
+- Set `DOMAIN` to your real domain (DNS pointing at the host, ports 80+443 open)
+  and Caddy obtains and renews a **Let's Encrypt certificate automatically**.
+- With `DOMAIN=localhost` (default) Caddy serves HTTPS with its own internal CA
+  for local testing. Configure the proxy in [`Caddyfile`](./Caddyfile).
 
 ## Running the project
 

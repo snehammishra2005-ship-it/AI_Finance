@@ -12,7 +12,7 @@ from ui.api import logout
 # Load Previous Chat Callback
 # -------------------------------------------------
 def load_chat_callback(file_path):
-    data = load_chat_history(file_path)
+    data = load_chat_history(file_path, user_key=st.session_state.get("username"))
 
     st.session_state.messages = data.get("messages", [])
     st.session_state.persona = data.get("persona", "General User")
@@ -28,7 +28,8 @@ def new_chat_callback():
         save_chat_history(
             messages=st.session_state.messages,
             persona=st.session_state.get("persona"),
-            slm=st.session_state.get("slm")
+            slm=st.session_state.get("slm"),
+            user_key=st.session_state.get("username"),
         )
 
     st.session_state.messages = []
@@ -89,7 +90,7 @@ def render_sidebar():
             unsafe_allow_html=True
         )
 
-        histories = load_all_histories()
+        histories = load_all_histories(st.session_state.get("username"))
 
         if not histories:
             st.caption("No saved chats yet.")

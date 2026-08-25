@@ -32,3 +32,7 @@ for _var in (
     "ANTHROPIC_API_KEY", "CEREBRAS_API_KEY", "MISTRAL_API_KEY",
 ):
     os.environ.setdefault(_var, "test-dummy-key")
+
+# NOTE: the embedding model (backend.services.rag.embedding_adapter) loads
+# lazily on first use, so importing the backend performs NO network I/O and the
+# suite stays offline without any stubbing here.

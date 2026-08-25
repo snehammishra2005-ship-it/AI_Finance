@@ -2,12 +2,16 @@ services:
   backend:
     build: .
     command: uvicorn backend.main:app --host 0.0.0.0 --port 8000
-    ports:
-      - "8000:8000"
+    # No published ports: the backend is reachable ONLY on the internal
+    # ai-finance-net network (by the frontend), never directly from the host.
+    # Publishing :8000 previously exposed a second, unauthenticated door — this
+    # removes it (see production-readiness P0 #4).
+    expose:
+      - "8000"
     volumes:
       - .:/app
       # Persist the HuggingFace cache so the embedding model
-      # (all-MiniLM-L6-v2, ~90MB) is downloaded once, not on every rebuild.
+      # (BAAI/bge-small-en-v1.5, ~90MB) is downloaded once, not on every rebuild.
       - hf-cache:/root/.cache/huggingface
     env_file:
       - .env
@@ -29,8 +33,13 @@ services:
   frontend:
     build: .
     command: streamlit run ui/app.py --server.port 8501 --server.address 0.0.0.0
+    # Bind to the host's loopback only (not 0.0.0.0): reachable at
+    # http://localhost:8501 for local development, but NOT exposed on the
+    # machine's public network interfaces. In production the Caddy proxy below
+    # is the only public entry point and reaches the frontend over the internal
+    # network, so real traffic is always TLS-terminated.
     ports:
-      - "8501:8501"
+      - "127.0.0.1:8501:8501"
     volumes:
       - .:/app
     env_file:
@@ -52,8 +61,34 @@ services:
     networks:
       - ai-finance-net
 
+  # Reverse proxy with automatic HTTPS. Enabled only under the "production"
+  # profile, so a plain `docker compose up` stays a simple local dev setup:
+  #     DOMAIN=your.domain docker compose --profile production up -d --build
+  # Caddy is the ONLY service that publishes public ports (80/443); it terminates
+  # TLS and forwards to the frontend over the internal network. See ./Caddyfile.
+  caddy:
+    image: caddy:2
+    profiles: ["production"]
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      frontend:
+        condition: service_healthy
+    networks:
+      - ai-finance-net
+
 volumes:
   hf-cache:
+  caddy-data:
+  caddy-config:
 
 networks:
   ai-finance-net:

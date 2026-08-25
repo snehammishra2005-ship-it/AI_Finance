@@ -1,4 +1,3 @@
-from sentence_transformers import SentenceTransformer
 from lightrag.utils import EmbeddingFunc
 
 # BGE-small (v1.5) is a retrieval-tuned model that noticeably out-recalls the
@@ -6,7 +5,22 @@ from lightrag.utils import EmbeddingFunc
 # output - so existing per-session vector stores stay dimension-compatible (no
 # schema break). NOTE: vectors from the two models aren't interchangeable, so
 # sessions indexed under the old model should be re-ingested for best results.
-model = SentenceTransformer("BAAI/bge-small-en-v1.5")
+_MODEL_NAME = "BAAI/bge-small-en-v1.5"
+
+# The model is loaded LAZILY (on first embedding call), not at import time.
+# Importing this module - and therefore importing backend.main - must not reach
+# out to HuggingFace to download the model: that made the backend impossible to
+# import in restricted/offline environments (and in the test suite) and slowed
+# startup. It now downloads/loads only when the first document is embedded.
+_model = None
+
+
+def _get_model():
+    global _model
+    if _model is None:
+        from sentence_transformers import SentenceTransformer
+        _model = SentenceTransformer(_MODEL_NAME)
+    return _model
 
 
 async def embedding_func(texts):
@@ -17,7 +31,7 @@ async def embedding_func(texts):
     if isinstance(texts, str):
         texts = [texts]
 
-    embeddings = model.encode(
+    embeddings = _get_model().encode(
         texts,
         normalize_embeddings=True
     )
