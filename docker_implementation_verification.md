@@ -4,17 +4,25 @@ _AI in Finance · `Dockerfile`, `docker-compose.yml`, `.dockerignore`, `requirem
 
 ## 1. Overview
 
-The whole application runs from one image with two services orchestrated by
-Docker Compose:
+The application runs from one image with two core services (plus an optional
+HTTPS proxy) orchestrated by Docker Compose:
 
-| Service | Command | Port | Role |
+| Service | Command | Host port | Role |
 |---|---|---|---|
-| `backend` | `uvicorn backend.main:app --host 0.0.0.0 --port 8000` | 8000 | FastAPI: chat, RAG, files, metrics |
-| `frontend` | `streamlit run ui/app.py --server.port 8501` | 8501 | Streamlit UI |
+| `backend` | `uvicorn backend.main:app --host 0.0.0.0 --port 8000` | **none (internal only)** | FastAPI: chat, RAG, files, metrics |
+| `frontend` | `streamlit run ui/app.py --server.port 8501` | `127.0.0.1:8501` (loopback) | Streamlit UI |
+| `caddy` _(production profile)_ | `caddy` (official image) | `80`, `443` | Reverse proxy + automatic HTTPS |
 
-Both are built from the same `Dockerfile` (`python:3.11-slim`) and talk over a
-private bridge network; the frontend waits for the backend to be **healthy**
-before it starts.
+The backend and frontend are built from the same `Dockerfile`
+(`python:3.11-slim`) and talk over a private bridge network; the frontend waits
+for the backend to be **healthy** before it starts.
+
+**Network posture (P0 #4):** the backend publishes **no host port** — it's
+reachable only on the internal network, so there's no open, unauthenticated API
+door. The frontend binds to the host's loopback only. In the `production`
+profile, **Caddy is the single public entry point** (80/443): it terminates TLS
+and forwards to the frontend internally, obtaining a Let's Encrypt certificate
+automatically for a real `DOMAIN` (or an internal-CA cert for `localhost`).
 
 ## 2. Key implementation decisions
 
@@ -32,13 +40,24 @@ before it starts.
 
 ## 3. How to run
 
+**Local development** (plain HTTP, backend private):
+
 ```bash
 docker compose up --build -d
 ```
 
-- UI: http://localhost:8501  ·  API: http://localhost:8000
+- UI: http://localhost:8501 — the backend has **no published port** (internal only).
 - Rebuild after changing `requirements.txt`; restart (`docker compose restart backend`) after code-only changes.
 - On a name/port conflict: `docker compose down --remove-orphans` first.
+
+**Production** (HTTPS via Caddy, single public entry point):
+
+```bash
+DOMAIN=app.example.com docker compose --profile production up -d --build
+```
+
+- Caddy publishes 80/443 and obtains a Let's Encrypt cert for `DOMAIN`
+  automatically; nothing else is exposed publicly. See [`Caddyfile`](./Caddyfile).
 
 ## 4. Verification performed
 
