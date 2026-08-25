@@ -36,7 +36,23 @@ The items below are grouped by priority: **P0** (do first / blockers) down to **
 
 These are the "someone could get hurt or you could lose money" items.
 
-### 1. Authentication (login)
+> **✅ Status: all P0 items are complete** (delivered in PR #1). Each item below
+> keeps its original description for context, with a **Done** note describing how
+> it was addressed. The app has moved from "open to anyone" to a genuinely
+> deployable posture: authenticated, per-user isolated, secrets handled properly,
+> TLS-fronted with a private backend, and abuse-limited.
+
+### 1. Authentication (login) — ✅ Done
+- **What it is:** A way to prove who a user is before they can use the app.
+- **Current state:** There is **none**. No login, no accounts, no API keys. The backend
+  (`:8000`) is wide open.
+- **Why it matters:** Anyone who can reach the app can use it freely — **spending your paid
+  API credits** (Groq, Tavily) and uploading documents. There is nothing stopping abuse.
+- **What to do:** Add an authentication layer. Even a single shared password gate is a big
+  improvement; ideally, proper per-user login (e.g. JWT / session tokens).
+- **✅ Done:** Per-user accounts with bcrypt-hashed passwords and JWT bearer tokens
+  (`auth_service.py`); `/auth/register` · `/auth/login` · `/auth/me`; every other endpoint
+  requires a valid token; a login/create-account screen gates the UI.
 - **What it is:** A way to prove who a user is before they can use the app.
 - **Current state:** There is **none**. No login, no accounts, no API keys. The backend
   (`:8000`) is wide open.
@@ -45,23 +61,31 @@ These are the "someone could get hurt or you could lose money" items.
 - **What to do:** Add an authentication layer. Even a single shared password gate is a big
   improvement; ideally, proper per-user login (e.g. JWT / session tokens).
 
-### 2. Per-user data isolation for chat history
+### 2. Per-user data isolation for chat history — ✅ Done
 - **What it is:** Each user should only see their own saved conversations.
 - **Current state:** RAG documents are isolated per session ✅, but **chat history is
   global** — the code reads *every* saved chat file from one shared folder, so **every
   browser sees everyone's chats**.
 - **Why it matters:** It's a real privacy leak the moment more than one person uses the app.
 - **What to do:** Scope saved history to the logged-in user (needs #1 first).
+- **✅ Done:** Chat history is stored per user (`data/history/<user>/`) with path-traversal
+  guards; RAG documents are namespaced by the server-verified user id
+  (`_scoped_session_id`), so a forged `session_id` can't reach another user's store.
 
-### 3. Secrets management
+### 3. Secrets management — ✅ Done
 - **What it is:** How API keys and passwords are stored.
 - **Current state:** Kept in a plain `.env` file.
 - **Why it matters:** A `.env` file is fine for local development, but risky in production —
   secrets can leak through backups, logs, or a compromised server.
 - **What to do:** Use a proper secrets store (e.g. AWS Secrets Manager, HashiCorp Vault, or
   your cloud provider's equivalent). Never bake secrets into the image or commit them.
+- **✅ Done:** Centralized secrets layer (`config/secrets.py`) with a single source of truth
+  and a `<NAME>_FILE` convention so Docker/Kubernetes secrets and Vault work without values
+  in env or the image (a managed API store drops in as one resolver). Production refuses to
+  boot without an explicit `JWT_SECRET`; secret values are never logged; `.env.example`
+  documents everything.
 
-### 4. HTTPS / TLS and network posture
+### 4. HTTPS / TLS and network posture — ✅ Done
 - **What it is:** Encrypting traffic between the browser and the server, and not exposing
   internal services.
 - **Current state:** Plain HTTP. In Docker, the backend port `:8000` is published to the
@@ -70,13 +94,19 @@ These are the "someone could get hurt or you could lose money" items.
   the backend directly gives attackers a second, unauthenticated door.
 - **What to do:** Put a reverse proxy (nginx / Traefik / Caddy) in front with HTTPS. Expose
   **only** the frontend publicly; keep the backend on an internal network.
+- **✅ Done:** The backend no longer publishes a host port (internal network only); the
+  frontend binds to loopback; a Caddy reverse proxy (`production` profile) is the single
+  public entry with **automatic HTTPS** (Let's Encrypt for a real domain).
 
-### 5. Rate limiting / abuse control
+### 5. Rate limiting / abuse control — ✅ Done
 - **What it is:** Limits on how many requests or uploads a single user can make.
 - **Current state:** None on any endpoint.
 - **Why it matters:** One user (or a bot) can hammer the app, drain your API budget, or fill
   the disk with uploads.
 - **What to do:** Add per-user / per-IP rate limits and upload throttling.
+- **✅ Done:** Token-bucket limiter (`rate_limiter.py`) returning `429 + Retry-After`:
+  per-user on the API, per-IP on login/register (brute-force guard), and a stricter
+  per-user limit on uploads. All limits are env-configurable.
 
 ---
 
@@ -197,25 +227,29 @@ These are how you *run* the app confidently once it's live.
 
 ## Summary checklist
 
-| # | Item | Priority |
-|---|------|:--:|
-| 1 | Authentication (login) | 🔴 P0 |
-| 2 | Per-user chat history | 🔴 P0 |
-| 3 | Secrets management | 🔴 P0 |
-| 4 | HTTPS/TLS + hide backend port | 🔴 P0 |
-| 5 | Rate limiting / abuse control | 🔴 P0 |
-| 6 | Real database + object/vector storage | 🟠 P1 |
-| 7 | Multi-instance / horizontal scaling | 🟠 P1 |
-| 8 | Durable sessions | 🟠 P1 |
-| 9 | Cost metering + per-user quotas | 🟠 P1 |
-| 10 | Encryption at rest | 🟠 P1 |
-| 11 | Data retention + export/delete | 🟠 P1 |
-| 12 | Observability (logs/metrics/errors) | 🟡 P2 |
-| 13 | CI/CD pipeline | 🟡 P2 |
-| 14 | Integration / E2E tests | 🟡 P2 |
-| 15 | Backups & disaster recovery | 🟡 P2 |
-| 16 | Prompt-injection hardening | 🟡 P2 |
-| 17 | Product polish (UI, streaming, mobile) | 🟢 P3 |
+| # | Item | Priority | Status |
+|---|------|:--:|:--:|
+| 1 | Authentication (login) | 🔴 P0 | ✅ Done |
+| 2 | Per-user chat history | 🔴 P0 | ✅ Done |
+| 3 | Secrets management | 🔴 P0 | ✅ Done |
+| 4 | HTTPS/TLS + hide backend port | 🔴 P0 | ✅ Done |
+| 5 | Rate limiting / abuse control | 🔴 P0 | ✅ Done |
+| 6 | Real database + object/vector storage | 🟠 P1 | ⬜ Todo |
+| 7 | Multi-instance / horizontal scaling | 🟠 P1 | ⬜ Todo |
+| 8 | Durable sessions | 🟠 P1 | ⬜ Todo |
+| 9 | Cost metering + per-user quotas | 🟠 P1 | ⬜ Todo |
+| 10 | Encryption at rest | 🟠 P1 | ⬜ Todo |
+| 11 | Data retention + export/delete | 🟠 P1 | ⬜ Todo |
+| 12 | Observability (logs/metrics/errors) | 🟡 P2 | ⬜ Todo |
+| 13 | CI/CD pipeline | 🟡 P2 | ⬜ Todo |
+| 14 | Integration / E2E tests | 🟡 P2 | ⬜ Todo |
+| 15 | Backups & disaster recovery | 🟡 P2 | ⬜ Todo |
+| 16 | Prompt-injection hardening | 🟡 P2 | ⬜ Todo |
+| 17 | Product polish (UI, streaming, mobile) | 🟢 P3 | ⬜ Todo |
+
+**All P0 blockers are complete** (PR #1). The next milestone is P1 — replacing
+file-based storage with a real database + object/vector store, which also makes
+the P0 work (per-user data, rate limiting) safe across multiple instances.
 
 ---
 
