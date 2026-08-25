@@ -18,6 +18,10 @@ services:
     environment:
       - ENVIRONMENT=production
       - HF_HOME=/root/.cache/huggingface
+      # Structured data store. Empty (dev) -> the app falls back to local SQLite.
+      # In production set DATABASE_URL in .env to the Postgres service, e.g.
+      #   DATABASE_URL=postgresql+psycopg://aifinance:PASSWORD@db:5432/aifinance
+      - DATABASE_URL=${DATABASE_URL:-}
     healthcheck:
       # python instead of curl: curl isn't in the python:slim base image.
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/', timeout=5)"]
@@ -85,10 +89,33 @@ services:
     networks:
       - ai-finance-net
 
+  # Postgres for structured data (users, chat history) in production. Enabled
+  # under the "production" profile only — local dev uses SQLite with no DB
+  # service. Point the backend at it by setting DATABASE_URL in .env to
+  #   postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+  db:
+    image: postgres:16
+    profiles: ["production"]
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-aifinance}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-change-me-in-env}
+      - POSTGRES_DB=${POSTGRES_DB:-aifinance}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aifinance}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - ai-finance-net
+
 volumes:
   hf-cache:
   caddy-data:
   caddy-config:
+  pg-data:
 
 networks:
   ai-finance-net:

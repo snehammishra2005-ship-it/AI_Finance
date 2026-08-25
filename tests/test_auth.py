@@ -3,14 +3,17 @@ import tempfile
 import datetime as dt
 import unittest
 
-# Point the auth store at a throwaway SQLite file BEFORE importing the service.
-# auth_service._db_path() reads this env var at call time, so the test uses an
-# isolated DB regardless of import order and never touches the real data/auth.db.
-_TMP_DB = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
-_TMP_DB.close()
-os.environ["AUTH_DB_PATH"] = _TMP_DB.name
-
+import backend.db as db
 from backend.services import auth_service as A
+
+
+def _fresh_db():
+    """Point the DB layer at a throwaway SQLite file and create the schema."""
+    fd, path = tempfile.mkstemp(suffix=".db")
+    os.close(fd)
+    db.init_engine(f"sqlite:///{path}")
+    db.init_db()
+    return path
 
 
 class PasswordHashing(unittest.TestCase):
@@ -41,14 +44,18 @@ class Validation(unittest.TestCase):
             A.validate_credentials("gooduser", "short")
 
     def test_valid_credentials_pass(self):
-        # Should not raise.
         A.validate_credentials("good_user.1", "longenough")
 
 
 class UserStore(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        A.init_db()
+    def setUp(self):
+        self.path = _fresh_db()
+
+    def tearDown(self):
+        try:
+            os.unlink(self.path)
+        except OSError:
+            pass
 
     def test_register_then_authenticate(self):
         user = A.register_user("alice_test", "password123")
@@ -94,12 +101,7 @@ class Tokens(unittest.TestCase):
 
         past = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=1)
         token = jwt.encode(
-            {
-                "sub": "1",
-                "username": "x",
-                "iat": past - dt.timedelta(hours=1),
-                "exp": past,
-            },
+            {"sub": "1", "username": "x", "iat": past - dt.timedelta(hours=1), "exp": past},
             JWT_SECRET,
             algorithm=JWT_ALGORITHM,
         )

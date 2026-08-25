@@ -50,7 +50,6 @@ from backend.services.research_service import (
     strip_invalid_citations,
 )
 from backend.services.auth_service import (
-    init_db as auth_init_db,
     register_user,
     authenticate,
     create_token,
@@ -58,6 +57,8 @@ from backend.services.auth_service import (
     AuthError,
 )
 from backend.services.rate_limiter import API_LIMITER, AUTH_LIMITER, UPLOAD_LIMITER
+from backend.db import init_db as db_init_db
+from backend.services import history_service
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -74,8 +75,8 @@ async def lifespan(app: FastAPI):
         # Log which secrets are configured (values are redacted) and warn about
         # any required secret that's missing.
         log_config_summary()
-        # Create the user store (auth) if it doesn't exist yet.
-        auth_init_db()
+        # Create the database tables (users, chat history) if they don't exist.
+        db_init_db()
         # Pre-load the model so the first request isn't slow
         # Warning: This downloads the model if not present (~600MB+)
         llm_engine.load_model()
@@ -220,6 +221,12 @@ class AuthRequest(BaseModel):
     password: str
 
 
+class HistorySaveRequest(BaseModel):
+    persona: str | None = None
+    slm: str | None = None
+    messages: list = []
+
+
 class ChatRequest(BaseModel):
     message: str
     persona: str = "General User"
@@ -297,6 +304,41 @@ def me_endpoint(user: dict = Depends(get_current_user)):
     """Return the current user — used by the frontend to validate a stored
     token on load."""
     return {"id": user["id"], "username": user["username"]}
+
+# -------------------------------------------------
+# Chat history (per-user, database-backed)
+# -------------------------------------------------
+@app.post("/history")
+def save_history_endpoint(request: HistorySaveRequest, user: dict = Depends(rate_limited_user)):
+    """Save the current conversation to the logged-in user's history."""
+    history_id = history_service.save_history(
+        user["id"], request.messages, request.persona, request.slm
+    )
+    return {"id": history_id}
+
+
+@app.get("/history")
+def list_history_endpoint(user: dict = Depends(rate_limited_user)):
+    """List the logged-in user's saved chats (metadata only)."""
+    return {"histories": history_service.list_histories(user["id"])}
+
+
+@app.get("/history/{history_id}")
+def get_history_endpoint(history_id: int, user: dict = Depends(rate_limited_user)):
+    """Load one of the user's saved chats. 404 if it isn't theirs."""
+    history = history_service.get_history(user["id"], history_id)
+    if history is None:
+        raise HTTPException(status_code=404, detail="Chat not found.")
+    return history
+
+
+@app.delete("/history/{history_id}")
+def delete_history_endpoint(history_id: int, user: dict = Depends(rate_limited_user)):
+    """Delete one of the user's saved chats."""
+    deleted = history_service.delete_history(user["id"], history_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Chat not found.")
+    return {"deleted": True}
 
 @app.post("/chat")
 async def chat_endpoint(request: ChatRequest, user: dict = Depends(rate_limited_user)):

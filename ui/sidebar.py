@@ -1,18 +1,13 @@
 import streamlit as st
 
-from utils.history_manager import (
-    save_chat_history,
-    load_all_histories,
-    load_chat_history
-)
-from ui.api import logout
+from ui.api import logout, list_histories, save_history, load_history
 
 
 # -------------------------------------------------
 # Load Previous Chat Callback
 # -------------------------------------------------
-def load_chat_callback(file_path):
-    data = load_chat_history(file_path, user_key=st.session_state.get("username"))
+def load_chat_callback(history_id):
+    data = load_history(history_id)
 
     st.session_state.messages = data.get("messages", [])
     st.session_state.persona = data.get("persona", "General User")
@@ -25,11 +20,10 @@ def load_chat_callback(file_path):
 # -------------------------------------------------
 def new_chat_callback():
     if st.session_state.get("messages"):
-        save_chat_history(
-            messages=st.session_state.messages,
-            persona=st.session_state.get("persona"),
-            slm=st.session_state.get("slm"),
-            user_key=st.session_state.get("username"),
+        save_history(
+            st.session_state.messages,
+            st.session_state.get("persona"),
+            st.session_state.get("slm"),
         )
 
     st.session_state.messages = []
@@ -90,7 +84,7 @@ def render_sidebar():
             unsafe_allow_html=True
         )
 
-        histories = load_all_histories(st.session_state.get("username"))
+        histories = list_histories()
 
         if not histories:
             st.caption("No saved chats yet.")
@@ -99,14 +93,14 @@ def render_sidebar():
             for history in histories:
 
                 # Title = the chat's first question (falls back to timestamp).
-                history_label = history.get("title") or history["timestamp"]
+                history_label = history.get("title") or history.get("created_at") or "Untitled chat"
 
                 st.button(
                     label=history_label,
-                    key=history["file"],
+                    key=f"history_{history['id']}",
                     use_container_width=True,
                     on_click=load_chat_callback,
-                    args=(history["path"],)
+                    args=(history["id"],)
                 )
 
         # =================================================

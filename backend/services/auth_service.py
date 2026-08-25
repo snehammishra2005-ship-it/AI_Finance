@@ -1,84 +1,46 @@
 """
 Authentication service — per-user accounts.
 
-Provides the deterministic building blocks for auth, independent of FastAPI:
-- a SQLite-backed user store (username + bcrypt password hash),
+Deterministic auth building blocks, independent of FastAPI:
+- the user store (now the SQLAlchemy `User` model, so it runs on SQLite for
+  dev/tests and Postgres in production — see backend/db.py),
 - password hashing/verification (bcrypt),
 - JWT bearer-token creation/validation (HS256).
 
 The web layer (backend/main.py) wraps these in /auth/* endpoints and a
-`get_current_user` dependency that protects the other endpoints. Keeping the
-logic here (no FastAPI imports) makes it unit-testable offline with no network.
-
-Storage is SQLite for now (single-file, zero-config), the same file-based
-approach the rest of the app uses; it migrates to Postgres later per the
-production-readiness plan (P1 #6).
+`get_current_user` dependency. Keeping the logic here (no FastAPI imports) makes
+it unit-testable offline with no network.
 """
 
-import os
 import re
-import sqlite3
 import logging
 import datetime as dt
 
 import bcrypt
 import jwt
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
-from config.settings import (
-    AUTH_DB_PATH,
-    JWT_SECRET,
-    JWT_ALGORITHM,
-    JWT_EXPIRY_HOURS,
-)
+from config.settings import JWT_SECRET, JWT_ALGORITHM, JWT_EXPIRY_HOURS
+from backend.db import session_scope
+from backend.models import User
 
 logger = logging.getLogger(__name__)
 
-# Usernames: 3-32 chars, letters/digits and a few safe separators. Deliberately
-# strict so a username is always a clean identifier (also used to key per-user
-# data in the next step).
+# Usernames: 3-32 chars, letters/digits and a few safe separators.
 _USERNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{3,32}$")
 
 MIN_PASSWORD_LEN = 8
 MAX_PASSWORD_LEN = 128
 
-# bcrypt only considers the first 72 bytes of a password and newer releases
-# raise on longer input; truncate consistently in both hash and verify so a
-# long passphrase behaves predictably instead of erroring.
+# bcrypt only considers the first 72 bytes and newer releases raise on longer
+# input; truncate consistently in hash and verify.
 _BCRYPT_MAX_BYTES = 72
 
 
 class AuthError(Exception):
-    """Raised for any auth failure (bad credentials, duplicate user, invalid
-    or expired token, validation error). The web layer maps it to a 4xx."""
-
-
-def _db_path() -> str:
-    """Read the DB path at call time (not import time) so tests can point at a
-    throwaway file via the AUTH_DB_PATH env var regardless of import order."""
-    return os.environ.get("AUTH_DB_PATH", AUTH_DB_PATH)
-
-
-def _connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(_db_path())
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-def init_db() -> None:
-    """Create the users table if it doesn't exist. Safe to call on every boot."""
-    with _connect() as conn:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS users (
-                id            INTEGER PRIMARY KEY AUTOINCREMENT,
-                username      TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
-                created_at    TEXT NOT NULL
-            )
-            """
-        )
-        conn.commit()
-    logger.info("Auth user store ready at %s", _db_path())
+    """Raised for any auth failure (bad credentials, duplicate user, invalid or
+    expired token, validation error). The web layer maps it to a 4xx."""
 
 
 # -------------------------------------------------
@@ -103,7 +65,6 @@ def verify_password(password: str, password_hash: str) -> bool:
 # Validation
 # -------------------------------------------------
 def validate_credentials(username: str, password: str) -> None:
-    """Raise AuthError if the username/password don't meet the basic rules."""
     if not username or not _USERNAME_RE.match(username):
         raise AuthError(
             "Username must be 3-32 characters using letters, numbers, or . _ -"
@@ -115,50 +76,44 @@ def validate_credentials(username: str, password: str) -> None:
 
 
 # -------------------------------------------------
-# User store
+# User store (SQLAlchemy)
 # -------------------------------------------------
 def register_user(username: str, password: str) -> dict:
-    """Create a new user. Returns {'id', 'username'}. Raises AuthError if the
-    input is invalid or the username is already taken."""
+    """Create a new user. Returns {'id', 'username'}. Raises AuthError on invalid
+    input or a duplicate username."""
     username = (username or "").strip()
     validate_credentials(username, password)
-
     password_hash = hash_password(password)
-    now = dt.datetime.now(dt.timezone.utc).isoformat()
+
     try:
-        with _connect() as conn:
-            cur = conn.execute(
-                "INSERT INTO users (username, password_hash, created_at) "
-                "VALUES (?, ?, ?)",
-                (username, password_hash, now),
-            )
-            conn.commit()
-            return {"id": cur.lastrowid, "username": username}
-    except sqlite3.IntegrityError:
+        with session_scope() as session:
+            user = User(username=username, password_hash=password_hash)
+            session.add(user)
+            session.flush()  # assign id + trigger the UNIQUE constraint now
+            result = {"id": user.id, "username": user.username}
+        return result
+    except IntegrityError:
         raise AuthError("That username is already taken.")
 
 
 def authenticate(username: str, password: str) -> dict:
     """Verify credentials. Returns {'id', 'username'} on success, else raises
-    AuthError with a deliberately generic message (don't reveal which of the
-    username/password was wrong)."""
+    AuthError with a deliberately generic message."""
     username = (username or "").strip()
-    with _connect() as conn:
-        row = conn.execute(
-            "SELECT id, username, password_hash FROM users WHERE username = ?",
-            (username,),
-        ).fetchone()
+    with session_scope() as session:
+        user = session.execute(
+            select(User).where(User.username == username)
+        ).scalar_one_or_none()
 
-    if not row or not verify_password(password, row["password_hash"]):
-        raise AuthError("Invalid username or password.")
-    return {"id": row["id"], "username": row["username"]}
+        if user is None or not verify_password(password, user.password_hash):
+            raise AuthError("Invalid username or password.")
+        return {"id": user.id, "username": user.username}
 
 
 # -------------------------------------------------
 # JWT tokens
 # -------------------------------------------------
 def create_token(user: dict) -> str:
-    """Issue a signed JWT for a user dict ({'id', 'username'})."""
     now = dt.datetime.now(dt.timezone.utc)
     payload = {
         "sub": str(user["id"]),
@@ -170,8 +125,6 @@ def create_token(user: dict) -> str:
 
 
 def decode_token(token: str) -> dict:
-    """Validate a bearer token and return {'id', 'username'}. Raises AuthError
-    on an expired, tampered, or malformed token."""
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
     except jwt.ExpiredSignatureError:

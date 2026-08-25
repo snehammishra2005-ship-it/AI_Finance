@@ -1,7 +1,8 @@
+import re
 import unittest
 
 from utils.persona_manager import load_personas, get_persona_names, get_persona_prompt
-from utils.history_manager import _derive_title
+from backend.services.history_service import derive_title
 
 
 class PersonaManager(unittest.TestCase):
@@ -25,27 +26,28 @@ class PersonaManager(unittest.TestCase):
 
 class DeriveTitle(unittest.TestCase):
     def test_uses_first_user_message(self):
-        data = {"messages": [
+        messages = [
             {"role": "assistant", "content": "Hi"},
             {"role": "user", "content": "What is inflation?"},
-        ]}
-        self.assertEqual(_derive_title(data), "What is inflation?")
+        ]
+        self.assertEqual(derive_title(messages), "What is inflation?")
 
     def test_long_message_is_truncated_with_ellipsis(self):
         long = "Explain the entire history of central banking in great detail please"
-        title = _derive_title({"messages": [{"role": "user", "content": long}]})
+        title = derive_title([{"role": "user", "content": long}])
         self.assertTrue(title.endswith("…"))
         self.assertLessEqual(len(title), 39)  # 38 chars + ellipsis
 
     def test_collapses_whitespace(self):
-        data = {"messages": [{"role": "user", "content": "hello    there\n\nworld"}]}
-        self.assertEqual(_derive_title(data), "hello there world")
+        messages = [{"role": "user", "content": "hello    there\n\nworld"}]
+        self.assertEqual(derive_title(messages), "hello there world")
 
     def test_falls_back_to_timestamp_without_user_message(self):
-        data = {"timestamp": "20260101_120000", "messages": [
-            {"role": "assistant", "content": "Hi"},
-        ]}
-        self.assertEqual(_derive_title(data), "20260101_120000")
+        title = derive_title([{"role": "assistant", "content": "Hi"}])
+        self.assertRegex(title, r"^\d{8}_\d{6}$")
+
+    def test_empty_messages_falls_back_to_timestamp(self):
+        self.assertRegex(derive_title([]), r"^\d{8}_\d{6}$")
 
 
 if __name__ == "__main__":
