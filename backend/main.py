@@ -35,6 +35,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from config.settings import APP_NAME, APP_VERSION
+from config.secrets import log_config_summary
 from backend.services.file_processor import FileProcessor
 from backend.services.scoring_engine import ScoringEngine
 from backend.services.llm_service import llm_engine, advice_safety_note
@@ -69,6 +70,9 @@ async def lifespan(app: FastAPI):
     # Startup: Load Model
     logger.info("Startup: Loading SLM Model...")
     try:
+        # Log which secrets are configured (values are redacted) and warn about
+        # any required secret that's missing.
+        log_config_summary()
         # Create the user store (auth) if it doesn't exist yet.
         auth_init_db()
         # Pre-load the model so the first request isn't slow
