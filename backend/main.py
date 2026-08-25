@@ -152,6 +152,18 @@ def get_current_user(
         )
 
 
+def _scoped_session_id(user: dict, session_id: str) -> str:
+    """
+    Namespace a client-supplied session id with the authenticated user's id, so
+    RAG documents are isolated per user. The user id prefix is server-derived
+    (from the verified token), so even if a client sends another user's
+    session_id string, the effective storage key still starts with the caller's
+    own id and can't collide with — or reach — another user's store.
+    """
+    raw = (session_id or "default").strip() or "default"
+    return f"u{user['id']}-{raw}"
+
+
 # -------------------------------------------------
 # Data Models
 # -------------------------------------------------
@@ -263,9 +275,12 @@ async def chat_endpoint(request: ChatRequest, user: dict = Depends(get_current_u
         max_tokens = CHAT_MAX_TOKENS
 
         # Retrieve uploaded-document context (for blending with the web).
+        # Scope the session to the authenticated user so document context can
+        # only come from this user's own uploads.
         doc_context = ""
-        if request.use_documents and rag_service_manager.session_has_documents(request.session_id):
-            rag_service = await rag_service_manager.get(request.session_id)
+        scoped_session = _scoped_session_id(user, request.session_id)
+        if request.use_documents and rag_service_manager.session_has_documents(scoped_session):
+            rag_service = await rag_service_manager.get(scoped_session)
             doc_context = await rag_service.get_context(request.message)
 
         # Web search (iterative, bounded) - only if requested.
@@ -433,7 +448,7 @@ async def file_processing_endpoint(
                 "full_text": text,
             }
 
-        rag_service = await rag_service_manager.get(session_id)
+        rag_service = await rag_service_manager.get(_scoped_session_id(user, session_id))
         rag_result = await rag_service.ingest_document(text, file_path=file.filename)
 
         if rag_result["indexed"]:
@@ -500,13 +515,14 @@ async def rag_ask_endpoint(request: RAGQueryRequest, user: dict = Depends(get_cu
     try:
         # No documents yet: answer directly, and don't initialize a store
         # (which would leave an empty session directory on disk).
-        if not rag_service_manager.session_has_documents(request.session_id):
+        scoped_session = _scoped_session_id(user, request.session_id)
+        if not rag_service_manager.session_has_documents(scoped_session):
             return {
                 "answer": "You haven't uploaded any documents in this session yet. "
                           "Upload a document first, then ask about it."
             }
 
-        rag_service = await rag_service_manager.get(request.session_id)
+        rag_service = await rag_service_manager.get(scoped_session)
         answer = await rag_service.ask(request.question, persona=request.persona)
 
         # Replace LightRAG's internal "[no-context]" sentinel with a clean
@@ -530,7 +546,7 @@ async def rag_reprocess_endpoint(request: RAGReprocessRequest, user: dict = Depe
     full graph-based retrieval instead of staying vector-only forever.
     """
     try:
-        rag_service = await rag_service_manager.get(request.session_id)
+        rag_service = await rag_service_manager.get(_scoped_session_id(user, request.session_id))
         result = await rag_service.reprocess_failed_documents()
         return result
     except ValueError as e:
