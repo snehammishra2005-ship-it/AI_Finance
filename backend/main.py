@@ -7,7 +7,7 @@ This backend handles:
 - Analysis & scoring (CSV Generation)
 """
 
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
@@ -57,6 +57,7 @@ from backend.services.auth_service import (
     decode_token,
     AuthError,
 )
+from backend.services.rate_limiter import API_LIMITER, AUTH_LIMITER, UPLOAD_LIMITER
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -156,6 +157,49 @@ def get_current_user(
         )
 
 
+# -------------------------------------------------
+# Rate limiting (abuse control)
+# -------------------------------------------------
+def _client_ip(request: Request) -> str:
+    """Best-effort client IP. Behind the Caddy reverse proxy the real client is
+    in X-Forwarded-For (Caddy sets it, and the backend isn't publicly reachable
+    except through the proxy — see P0 #4 — so trusting it here is safe)."""
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _enforce(limiter, key: str) -> None:
+    allowed, retry_after = limiter.check(key)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded — please slow down and try again shortly.",
+            headers={"Retry-After": str(max(1, int(retry_after) + 1))},
+        )
+
+
+def rate_limit_auth(request: Request) -> None:
+    """Per-IP limit for the unauthenticated login/register endpoints."""
+    _enforce(AUTH_LIMITER, f"auth:{_client_ip(request)}")
+
+
+def rate_limited_user(request: Request, user: dict = Depends(get_current_user)) -> dict:
+    """Authenticate AND apply the per-user API rate limit. Returns the user so
+    endpoints use it in place of get_current_user."""
+    _enforce(API_LIMITER, f"user:{user['id']}")
+    return user
+
+
+def rate_limited_upload(request: Request, user: dict = Depends(get_current_user)) -> dict:
+    """Per-user API limit plus a stricter per-user upload limit (uploads are
+    heavier: extraction + RAG indexing + disk)."""
+    _enforce(API_LIMITER, f"user:{user['id']}")
+    _enforce(UPLOAD_LIMITER, f"upload:{user['id']}")
+    return user
+
+
 def _scoped_session_id(user: dict, session_id: str) -> str:
     """
     Namespace a client-supplied session id with the authenticated user's id, so
@@ -224,7 +268,7 @@ def root():
 # Auth endpoints (open — no token required)
 # -------------------------------------------------
 @app.post("/auth/register")
-def register_endpoint(request: AuthRequest):
+def register_endpoint(request: AuthRequest, _rl: None = Depends(rate_limit_auth)):
     """Create a new account and return a bearer token so the user is logged in
     immediately after signing up."""
     try:
@@ -238,7 +282,7 @@ def register_endpoint(request: AuthRequest):
 
 
 @app.post("/auth/login")
-def login_endpoint(request: AuthRequest):
+def login_endpoint(request: AuthRequest, _rl: None = Depends(rate_limit_auth)):
     """Verify credentials and return a bearer token."""
     try:
         user = authenticate(request.username, request.password)
@@ -255,7 +299,7 @@ def me_endpoint(user: dict = Depends(get_current_user)):
     return {"id": user["id"], "username": user["username"]}
 
 @app.post("/chat")
-async def chat_endpoint(request: ChatRequest, user: dict = Depends(get_current_user)):
+async def chat_endpoint(request: ChatRequest, user: dict = Depends(rate_limited_user)):
     """
     Handles chat requests using the selected LLM.
 
@@ -363,7 +407,7 @@ async def chat_endpoint(request: ChatRequest, user: dict = Depends(get_current_u
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/chat/stream")
-async def chat_stream_endpoint(request: ChatRequest, user: dict = Depends(get_current_user)):
+async def chat_stream_endpoint(request: ChatRequest, user: dict = Depends(rate_limited_user)):
     """
     Streaming variant of /chat for the plain chat path (no web search / no
     document grounding - those need post-processing like citation handling and
@@ -411,7 +455,7 @@ async def chat_stream_endpoint(request: ChatRequest, user: dict = Depends(get_cu
 async def file_processing_endpoint(
     file: UploadFile = File(...),
     session_id: str = Form("default"),
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(rate_limited_upload),
 ):
     """
     Receives an uploaded file, determines type, and extracts text.
@@ -498,7 +542,7 @@ async def file_processing_endpoint(
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/metrics")
-async def metrics_endpoint(request: MetricsRequest, user: dict = Depends(get_current_user)):
+async def metrics_endpoint(request: MetricsRequest, user: dict = Depends(rate_limited_user)):
     """
     Extracts explicitly-stated financial metrics (revenue, profit, margins,
     ratios, etc.) from a document's extracted text as structured rows.
@@ -511,7 +555,7 @@ async def metrics_endpoint(request: MetricsRequest, user: dict = Depends(get_cur
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/rag/ask")
-async def rag_ask_endpoint(request: RAGQueryRequest, user: dict = Depends(get_current_user)):
+async def rag_ask_endpoint(request: RAGQueryRequest, user: dict = Depends(rate_limited_user)):
     """
     Answers a question grounded in documents uploaded during this session
     only (see session_id) - not the global set of every uploaded document.
@@ -543,7 +587,7 @@ async def rag_ask_endpoint(request: RAGQueryRequest, user: dict = Depends(get_cu
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/rag/reprocess")
-async def rag_reprocess_endpoint(request: RAGReprocessRequest, user: dict = Depends(get_current_user)):
+async def rag_reprocess_endpoint(request: RAGReprocessRequest, user: dict = Depends(rate_limited_user)):
     """
     Retries any documents in this session whose RAG indexing previously
     failed (e.g. a provider rate limit mid-extraction), so they can gain
@@ -560,7 +604,7 @@ async def rag_reprocess_endpoint(request: RAGReprocessRequest, user: dict = Depe
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/analysis")
-def analysis_endpoint(request: AnalysisRequest, user: dict = Depends(get_current_user)):
+def analysis_endpoint(request: AnalysisRequest, user: dict = Depends(rate_limited_user)):
     """
     Triggers the scoring engine to generate analysis CSV.
     """
